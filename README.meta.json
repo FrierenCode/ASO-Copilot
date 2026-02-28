@@ -1,0 +1,22 @@
+{
+  "projectName": "ASO Copilot",
+  "serviceDescription": "ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수화하며, 반복적인 App Store Optimization 워크플로우를 위한 API/웹 연동 지점을 제공하는 워크스페이스입니다.",
+  "features": [
+    {
+      "name": "스키마 검증",
+      "description": "공유 Zod 스키마로 요청/응답 계약을 검증해 API 동작을 안정적으로 유지합니다."
+    },
+    {
+      "name": "카피 스코어링 엔진",
+      "description": "키워드, 명확성, 수치 신호, 카테고리 정합성 점수로 실행 가능한 추천을 제공합니다."
+    },
+    {
+      "name": "생성 API",
+      "description": "Cloudflare Worker + Hono 엔드포인트가 생성 입력을 처리하고 점수와 함께 변형 문구 결과를 반환합니다."
+    },
+    {
+      "name": "웹 프론트엔드",
+      "description": "Next.js 프론트엔드가 향후 생성/스코어링 UI 플로우를 위한 연동 화면을 제공합니다."
+    }
+  ]
+}

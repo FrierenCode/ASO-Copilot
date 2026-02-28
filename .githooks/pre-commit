@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "${ASO_SKIP_README_HOOK:-}" = "1" ]; then
+  exit 0
+fi
+
+node scripts/update-readme.mjs --mode pre-commit
+git -c safe.directory=* add README.md

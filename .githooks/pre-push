@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "${ASO_SKIP_README_HOOK:-}" = "1" ]; then
+  exit 0
+fi
+
+node scripts/update-readme.mjs --mode pre-push
+
+if ! git -c safe.directory=* diff --quiet -- README.md; then
+  git -c safe.directory=* add README.md
+  echo "README.md was updated before push."
+  echo "Please commit README.md, then run git push again."
+  exit 1
+fi

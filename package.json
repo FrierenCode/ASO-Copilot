@@ -8,7 +8,10 @@
     "dev:web": "pnpm -C apps/web dev",
     "dev:api": "pnpm -C apps/api dev",
     "build:web": "pnpm -C apps/web build",
-    "build:api": "pnpm -C apps/api build"
+    "build:api": "pnpm -C apps/api build",
+    "readme:update": "node scripts/update-readme.mjs --mode manual",
+    "readme:check": "node scripts/update-readme.mjs --mode manual --check",
+    "prepare": "git -c safe.directory=* config --local core.hooksPath .githooks"
   },
   "keywords": [],
   "author": "",
