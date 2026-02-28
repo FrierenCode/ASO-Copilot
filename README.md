@@ -166,5 +166,9 @@ ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수
 - 상세: `package.json` (수정) - 워크스페이스 루트 설정과 실행 스크립트를 관리합니다. 주요 스크립트: `readme:update`, `readme:check`, `dev:web`, `dev:api`, `build:web`, `build:api`.
 - 상세: `scripts/update-readme.mjs` (추가) - README 자동 생성/요약 로직입니다. 핵심 함수: `buildUpdateLines`, `renderProjectStructure`, `buildFileInsight`, `renderDetailedChangeLine`, `collectDiffStats`.
 - 한줄 요약: Git 훅, 프로젝트 문서 영역 중심으로 5개 파일을 추가했습니다.
+- 변경 요약: 총 1개 파일 (수정 1개).
+- 구조 분석: `자동화 스크립트` 1개.
+- 상세: `scripts/update-readme.mjs` (수정, +864/-35) - README 자동 생성/요약 로직입니다. 핵심 함수: `buildUpdateLines`, `renderProjectStructure`, `buildFileInsight`, `renderDetailedChangeLine`, `collectDiffStats`.
+- 한줄 요약: 자동화 스크립트 영역 중심으로 1개 파일을 수정했습니다.
 </details>
 <!-- UPDATE_NOTES_END -->
