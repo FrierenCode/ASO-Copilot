@@ -8,22 +8,39 @@ const USAGE_KEY = 'aso_copilot_usage'
 const PRO_KEY = 'aso_copilot_is_pro'
 const FREE_LIMIT = 3
 
+function canUseStorage(): boolean {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+}
+
 function readUsage(): number {
-  return parseInt(localStorage.getItem(USAGE_KEY) ?? '0', 10)
+  if (!canUseStorage()) {
+    return 0
+  }
+  const parsed = parseInt(window.localStorage.getItem(USAGE_KEY) ?? '0', 10)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function incrementUsage(): number {
+  if (!canUseStorage()) {
+    return 0
+  }
   const next = readUsage() + 1
-  localStorage.setItem(USAGE_KEY, String(next))
+  window.localStorage.setItem(USAGE_KEY, String(next))
   return next
 }
 
 function readIsPro(): boolean {
-  return localStorage.getItem(PRO_KEY) === 'true'
+  if (!canUseStorage()) {
+    return false
+  }
+  return window.localStorage.getItem(PRO_KEY) === 'true'
 }
 
 function activatePro(): void {
-  localStorage.setItem(PRO_KEY, 'true')
+  if (!canUseStorage()) {
+    return
+  }
+  window.localStorage.setItem(PRO_KEY, 'true')
 }
 
 export default function Home() {
