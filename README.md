@@ -15,8 +15,12 @@ ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수
 ### 구조 개요
 - 루트 파일: 6개
 - `apps/`: 총 34개 파일 (web 19개, api 15개)
+- `packages/`: 총 8개 파일 (scoring 4개, shared 4개)
 - `scripts/`: 1개 파일
+- `docs/`: 7개 파일
+- `docs_result/`: 1개 파일
 - `.githooks/`: 2개 파일
+- `.vscode/`: 1개 파일
 
 ### 파일 상세
 <details>
@@ -39,6 +43,14 @@ ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수
 | --- | --- |
 | `pre-commit` | 커밋 전에 README를 갱신하고 스테이징합니다. |
 | `pre-push` | 푸시 전에 README 최신 여부를 점검합니다. |
+</details>
+
+<details>
+<summary>VSCode 설정 (1개 파일)</summary>
+
+| 파일 | 설명 |
+| --- | --- |
+| `settings.json` | VSCode 워크스페이스 설정입니다. |
 </details>
 
 <details>
@@ -90,9 +102,53 @@ ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수
 </details>
 
 <details>
+<summary>packages/shared (4개 파일)</summary>
+
+| 파일 | 설명 |
+| --- | --- |
+| `package.json` | 앱 간 계약을 위한 공유 패키지 설정입니다. |
+| `src/generate.ts` | 워크스페이스에서 재사용하는 공유 스키마/타입 정의입니다. |
+| `src/index.ts` | 워크스페이스에서 재사용하는 공유 스키마/타입 정의입니다. |
+| `tsconfig.json` | 앱 간 계약을 위한 공유 패키지 설정입니다. |
+</details>
+
+<details>
+<summary>packages/scoring (4개 파일)</summary>
+
+| 파일 | 설명 |
+| --- | --- |
+| `package.json` | 스코어링 패키지 설정입니다. |
+| `src/index.ts` | 카피 스코어링 구현 및 공개 export입니다. |
+| `src/scoreCopy.ts` | 카피 스코어링 구현 및 공개 export입니다. |
+| `tsconfig.json` | 스코어링 패키지 설정입니다. |
+</details>
+
+<details>
 <summary>scripts (1개 파일)</summary>
 
 | 파일 | 설명 |
 | --- | --- |
 | `update-readme.mjs` | README 자동 갱신 스크립트입니다. |
+</details>
+
+<details>
+<summary>docs (7개 파일)</summary>
+
+| 파일 | 설명 |
+| --- | --- |
+| `1.plan-shared-schema.md` | 기획 및 구현 문서입니다. |
+| `2.shared-schema-integration-result.md` | 기획 및 구현 문서입니다. |
+| `3.scoring-package-file-plan-and-claude-prompt.md` | 기획 및 구현 문서입니다. |
+| `4.scoring-v2.1-upgrade-result.md` | 기획 및 구현 문서입니다. |
+| `5.scoring-v2.2-upgrade-result.md` | 기획 및 구현 문서입니다. |
+| `6.web-scoring-integration-file-plan.md` | 기획 및 구현 문서입니다. |
+| `7.api-contract-breakdown-cors-file-plan.md` | 기획 및 구현 문서입니다. |
+</details>
+
+<details>
+<summary>docs_result (1개 파일)</summary>
+
+| 파일 | 설명 |
+| --- | --- |
+| `3-1.scoring-package-implementation-result.md` | 구현 작업 결과 문서입니다. |
 </details>
