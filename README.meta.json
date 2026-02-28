@@ -1,6 +1,14 @@
 {
   "projectName": "ASO Copilot",
+  "tagline": "commit/push 전에 README를 자동 갱신하는 워크스페이스 문서입니다.",
+  "liveUrl": "https://aso-copilot.pages.dev",
   "serviceDescription": "ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수화하며, 반복적인 App Store Optimization 워크플로우를 위한 API/웹 연동 지점을 제공하는 워크스페이스입니다.",
+  "commitRules": [
+    "커밋/푸시 전에 `scripts/update-readme.mjs`로 README를 최신 상태로 동기화합니다.",
+    "`pre-commit` 훅에서 README를 갱신하고 자동으로 스테이징합니다.",
+    "`pre-push` 훅에서 README 변경 여부를 점검하고, 변경 시 푸시를 중단합니다.",
+    "자동 동기화 블록(`README:AUTO-START/END`)은 스크립트가 직접 관리합니다."
+  ],
   "features": [
     {
       "name": "스키마 검증",

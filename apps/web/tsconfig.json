@@ -19,6 +19,8 @@
       }
     ],
     "paths": {
+      "@aso-copilot/shared": ["../../packages/shared/src/index.ts"],
+      "@aso-copilot/shared/*": ["../../packages/shared/src/*"],
       "@/*": ["./src/*"]
     }
   },

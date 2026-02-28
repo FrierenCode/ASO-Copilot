@@ -49,6 +49,7 @@ app.post('/generate', async (c) => {
       C: ['C1', 'C2'],
     },
     score: scoring.score,
+    breakdown: scoring.breakdown,
     recommendation: scoring.recommendation,
   }
 

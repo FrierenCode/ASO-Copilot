@@ -1,18 +1,28 @@
 #!/usr/bin/env node
 
+import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
 const repoRoot = process.cwd()
 const readmePath = path.join(repoRoot, 'README.md')
 const metaPath = path.join(repoRoot, 'README.meta.json')
+
 const args = process.argv.slice(2)
+const mode = getArgValue(args, '--mode') || 'manual'
 const checkOnly = args.includes('--check')
 
-const metadata = loadMetadata()
-const files = listProjectFiles()
 const existingReadme = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, 'utf8') : ''
-const nextReadme = renderReadme(metadata, files)
+const metadata = loadMetadata()
+const trackedFiles = listProjectFiles()
+const autoSyncFilesText = resolveAutoSyncFileList(existingReadme)
+const nextReadme = renderReadme({
+  meta: metadata,
+  trackedFiles,
+  existingReadme,
+  autoSyncFilesText,
+  mode,
+})
 const changed = nextReadme !== existingReadme
 
 if (checkOnly) {
@@ -25,29 +35,50 @@ if (checkOnly) {
 }
 
 if (changed) {
-  fs.writeFileSync(readmePath, nextReadme)
+  fs.writeFileSync(readmePath, nextReadme, 'utf8')
   process.stdout.write('README.md를 업데이트했습니다.\n')
 } else {
   process.stdout.write('README.md가 이미 최신 상태입니다.\n')
 }
 
+function getArgValue(inputArgs, key) {
+  const index = inputArgs.indexOf(key)
+  if (index === -1 || index === inputArgs.length - 1) {
+    return ''
+  }
+  return inputArgs[index + 1]
+}
+
 function loadMetadata() {
   const fallback = {
     projectName: 'ASO Copilot',
-    serviceDescription: 'ASO 카피 생성과 스코어링을 위한 워크스페이스입니다.',
+    tagline: 'commit/push 전에 README를 자동 갱신하는 워크스페이스 문서입니다.',
+    liveUrl: '',
+    serviceDescription:
+      'ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수화하며, 반복적인 App Store Optimization 워크플로우를 위한 API/웹 연동 지점을 제공하는 워크스페이스입니다.',
     features: [
       {
         name: '스키마 검증',
-        description: '생성 API 계약을 검증합니다.',
+        description: '공유 Zod 스키마로 요청/응답 계약을 검증해 API 동작을 안정적으로 유지합니다.',
       },
       {
-        name: '카피 스코어링',
-        description: '카피를 점수화하고 추천을 반환합니다.',
+        name: '카피 스코어링 엔진',
+        description: '키워드, 명확성, 수치 신호, 카테고리 정합성 점수로 실행 가능한 추천을 제공합니다.',
       },
       {
-        name: 'API + 웹',
-        description: 'API와 프론트엔드 연동 지점을 제공합니다.',
+        name: '생성 API',
+        description: 'Cloudflare Worker + Hono 엔드포인트가 생성 입력을 처리하고 결과를 반환합니다.',
       },
+      {
+        name: '웹 프론트엔드',
+        description: 'Next.js 프론트엔드가 향후 생성/스코어링 UI 플로우를 위한 연동 화면을 제공합니다.',
+      },
+    ],
+    commitRules: [
+      '커밋/푸시 전에 `scripts/update-readme.mjs`로 README를 최신 상태로 동기화합니다.',
+      '`pre-commit` 훅에서 README를 갱신하고 자동으로 스테이징합니다.',
+      '`pre-push` 훅에서 README 변경 여부를 점검하고, 변경 시 푸시를 중단합니다.',
+      '자동 동기화 블록(`README:AUTO-START/END`)은 스크립트가 직접 관리합니다.',
     ],
   }
 
@@ -56,33 +87,54 @@ function loadMetadata() {
   }
 
   try {
-    const raw = fs.readFileSync(metaPath, 'utf8')
-    const parsed = JSON.parse(raw)
-
+    const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf8'))
     if (!parsed || typeof parsed !== 'object') {
       return fallback
     }
 
     const projectName = asString(parsed.projectName) || fallback.projectName
+    const tagline = asString(parsed.tagline) || fallback.tagline
+    const liveUrl = asString(parsed.liveUrl) || fallback.liveUrl
     const serviceDescription = asString(parsed.serviceDescription) || fallback.serviceDescription
-    const features = Array.isArray(parsed.features)
-      ? parsed.features
-          .filter((item) => item && typeof item === 'object')
-          .map((item) => ({
-            name: asString(item.name),
-            description: asString(item.description),
-          }))
-          .filter((item) => item.name && item.description)
-      : fallback.features
+    const features = parseFeatureList(parsed.features, fallback.features)
+    const commitRules = parseStringList(parsed.commitRules, fallback.commitRules)
 
     return {
       projectName,
+      tagline,
+      liveUrl,
       serviceDescription,
-      features: features.length > 0 ? features : fallback.features,
+      features,
+      commitRules,
     }
   } catch {
     return fallback
   }
+}
+
+function parseFeatureList(value, fallback) {
+  if (!Array.isArray(value)) {
+    return fallback
+  }
+
+  const parsed = value
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      name: asString(item.name),
+      description: asString(item.description),
+    }))
+    .filter((item) => item.name && item.description)
+
+  return parsed.length > 0 ? parsed : fallback
+}
+
+function parseStringList(value, fallback) {
+  if (!Array.isArray(value)) {
+    return fallback
+  }
+
+  const parsed = value.map((item) => asString(item)).filter(Boolean)
+  return parsed.length > 0 ? parsed : fallback
 }
 
 function asString(value) {
@@ -109,6 +161,7 @@ function scanFiles(baseDir, relativeDir) {
     'build',
     'coverage',
   ])
+
   const files = []
 
   for (const entry of entries) {
@@ -130,268 +183,264 @@ function scanFiles(baseDir, relativeDir) {
   return files
 }
 
-function renderReadme(meta, trackedFiles) {
-  const featureLines = meta.features
-    .map((feature, index) => `${index + 1}. **${feature.name}**: ${feature.description}`)
-    .join('\n')
+function resolveAutoSyncFileList(existingReadmeText) {
+  const staged = getStagedChanges()
+  if (staged.length > 0) {
+    return formatChangedFiles(staged)
+  }
 
-  const structureSection = renderProjectStructure(trackedFiles)
+  const preserved = extractAutoSyncFileList(existingReadmeText)
+  if (preserved) {
+    return preserved
+  }
+
+  return '변경 파일 없음'
+}
+
+function getStagedChanges() {
+  try {
+    const raw = execSync('git -c safe.directory=* diff --cached --name-status -- .', {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+
+    if (!raw) {
+      return []
+    }
+
+    return raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [status = '', ...rest] = line.split(/\s+/)
+        const filePath = rest.join(' ').replace(/\\/g, '/')
+        return {
+          status: status || 'M',
+          filePath,
+        }
+      })
+      .filter((entry) => entry.filePath)
+  } catch {
+    return []
+  }
+}
+
+function formatChangedFiles(entries) {
+  return entries.map((entry) => `${entry.status}\n${entry.filePath}`).join('\n')
+}
+
+function extractAutoSyncFileList(readmeText) {
+  if (!readmeText.includes('<!-- README:AUTO-START -->')) {
+    return ''
+  }
+
+  const match = readmeText.match(
+    /<!-- README:AUTO-START -->[\s\S]*?```text\s*\n([\s\S]*?)\n```[\s\S]*?<!-- README:AUTO-END -->/
+  )
+  if (!match) {
+    return ''
+  }
+
+  return match[1].trim()
+}
+
+function renderReadme({ meta, trackedFiles, existingReadme: existingReadmeText, autoSyncFilesText, mode: runMode }) {
+  const liveLine = meta.liveUrl ? `**Live**: [${meta.liveUrl}](${meta.liveUrl})\n\n` : ''
+  const featureBlocks = meta.features
+    .map(
+      (feature, index) =>
+        `### ${index + 1}. ${feature.name}\n- ${feature.description}`
+    )
+    .join('\n\n')
+  const commitRules = meta.commitRules.map((rule) => `- ${rule}`).join('\n')
+  const projectStructure = renderProjectTree(trackedFiles)
+  const autoSyncBlock = renderAutoSyncBlock(autoSyncFilesText)
+  const updatesSection = buildUpdatesSection(existingReadmeText, autoSyncBlock, runMode)
 
   return `# ${meta.projectName}
 
-> 이 README는 Git hook으로 commit/push 전에 자동 갱신됩니다.
+> ${meta.tagline}
 
-## 서비스 설명
+${liveLine}---
+
+## 서비스 개요
+
 ${meta.serviceDescription}
 
-## 기능별 설명
-${featureLines}
+---
 
-## 프로젝트 파일 구조
-${structureSection}
+## 주요 기능
+
+${featureBlocks}
+
+---
+
+## 프로젝트 구조
+
+\`\`\`text
+${projectStructure}
+\`\`\`
+
+---
+
+## 커밋/푸시 운영 규칙
+
+${commitRules}
+
+---
+
+${updatesSection}
 `
 }
 
-function renderProjectStructure(trackedFiles) {
-  if (trackedFiles.length === 0) {
-    return '- 추적된 파일을 찾지 못했습니다.'
+function renderProjectTree(filePaths) {
+  if (filePaths.length === 0) {
+    return '(추적된 파일 없음)'
   }
 
-  const overviewLines = buildStructureOverview(trackedFiles)
-  const groups = groupFilesBySection(trackedFiles)
-  const orderedKeys = getOrderedGroupKeys(groups)
-  const groupBlocks = orderedKeys.map((key) => renderFileGroup(key, groups.get(key) ?? []))
+  const tree = createNode()
+  for (const filePath of filePaths) {
+    insertPath(tree, filePath.split('/'))
+  }
 
-  return `### 구조 개요
-${overviewLines.join('\n')}
-
-### 파일 상세
-${groupBlocks.join('\n\n')}`
+  const lines = renderTreeNode(tree, 0, true)
+  return lines.join('\n')
 }
 
-function buildStructureOverview(files) {
-  const rootCount = files.filter((filePath) => !filePath.includes('/')).length
-  const topMap = new Map()
+function createNode() {
+  return {
+    files: [],
+    directories: new Map(),
+  }
+}
 
-  for (const filePath of files) {
-    const parts = filePath.split('/')
-    if (parts.length === 1) {
-      continue
-    }
-
-    const top = parts[0]
-    const second = parts[1] ?? ''
-
-    if (!topMap.has(top)) {
-      topMap.set(top, {
-        count: 0,
-        secondLevel: new Map(),
-      })
-    }
-
-    const topInfo = topMap.get(top)
-    topInfo.count += 1
-    if (second) {
-      topInfo.secondLevel.set(second, (topInfo.secondLevel.get(second) ?? 0) + 1)
-    }
+function insertPath(node, parts) {
+  if (parts.length === 0) {
+    return
   }
 
-  const lines = [`- 루트 파일: ${rootCount}개`]
-  const topOrder = ['apps', 'packages', 'scripts', 'docs', 'docs_result', '.githooks', '.vscode']
+  if (parts.length === 1) {
+    node.files.push(parts[0])
+    return
+  }
 
-  const sortedTopKeys = Array.from(topMap.keys()).sort((a, b) => {
-    const indexA = topOrder.indexOf(a)
-    const indexB = topOrder.indexOf(b)
-    if (indexA !== -1 || indexB !== -1) {
-      if (indexA === -1) return 1
-      if (indexB === -1) return -1
-      return indexA - indexB
-    }
-    return a.localeCompare(b)
-  })
+  const [directory, ...rest] = parts
+  if (!node.directories.has(directory)) {
+    node.directories.set(directory, createNode())
+  }
+  insertPath(node.directories.get(directory), rest)
+}
 
-  for (const top of sortedTopKeys) {
-    const info = topMap.get(top)
+function renderTreeNode(node, depth, isRoot) {
+  const indent = ' '.repeat(depth * 3)
+  const lines = []
+  const fileNames = [...node.files].sort((a, b) => a.localeCompare(b))
+  const dirNames = sortDirectoryNames([...node.directories.keys()], isRoot)
 
-    if ((top === 'apps' || top === 'packages') && info.secondLevel.size > 0) {
-      const children = Array.from(info.secondLevel.entries())
-        .sort((a, b) => {
-          if (b[1] !== a[1]) {
-            return b[1] - a[1]
-          }
-          return a[0].localeCompare(b[0])
-        })
-        .slice(0, 5)
-        .map(([name, count]) => `${name} ${count}개`)
-        .join(', ')
-      lines.push(`- \`${top}/\`: 총 ${info.count}개 파일 (${children})`)
-      continue
-    }
+  for (const fileName of fileNames) {
+    lines.push(`${indent}${fileName}`)
+  }
 
-    lines.push(`- \`${top}/\`: ${info.count}개 파일`)
+  for (const directoryName of dirNames) {
+    lines.push(`${indent}${directoryName}`)
+    const child = node.directories.get(directoryName)
+    lines.push(...renderTreeNode(child, depth + 1, false))
   }
 
   return lines
 }
 
-function groupFilesBySection(files) {
-  const groups = new Map()
-
-  for (const filePath of files) {
-    const key = getFileGroupKey(filePath)
-    if (!groups.has(key)) {
-      groups.set(key, [])
-    }
-    groups.get(key).push(filePath)
+function sortDirectoryNames(names, isRoot) {
+  if (!isRoot) {
+    return names.sort((a, b) => a.localeCompare(b))
   }
 
-  for (const [key, groupFiles] of groups.entries()) {
-    groups.set(
-      key,
-      groupFiles.sort((a, b) => a.localeCompare(b))
-    )
-  }
-
-  return groups
-}
-
-function getFileGroupKey(filePath) {
-  if (!filePath.includes('/')) return 'root'
-  if (filePath.startsWith('.githooks/')) return '.githooks'
-  if (filePath.startsWith('.vscode/')) return '.vscode'
-  if (filePath.startsWith('apps/api/')) return 'apps/api'
-  if (filePath.startsWith('apps/web/')) return 'apps/web'
-  if (filePath.startsWith('packages/shared/')) return 'packages/shared'
-  if (filePath.startsWith('packages/scoring/')) return 'packages/scoring'
-  if (filePath.startsWith('packages/')) return 'packages/other'
-  if (filePath.startsWith('scripts/')) return 'scripts'
-  if (filePath.startsWith('docs_result/')) return 'docs_result'
-  if (filePath.startsWith('docs/')) return 'docs'
-  return filePath.split('/')[0]
-}
-
-function getOrderedGroupKeys(groups) {
   const preferredOrder = [
-    'root',
-    '.githooks',
-    '.vscode',
-    'apps/api',
-    'apps/web',
-    'packages/shared',
-    'packages/scoring',
-    'packages/other',
+    'apps',
+    'packages',
     'scripts',
     'docs',
     'docs_result',
+    '.githooks',
+    '.vscode',
   ]
 
-  const keys = Array.from(groups.keys())
-  const ordered = []
+  return names.sort((a, b) => {
+    const indexA = preferredOrder.indexOf(a)
+    const indexB = preferredOrder.indexOf(b)
 
-  for (const key of preferredOrder) {
-    if (groups.has(key)) {
-      ordered.push(key)
+    if (indexA !== -1 || indexB !== -1) {
+      if (indexA === -1) return 1
+      if (indexB === -1) return -1
+      return indexA - indexB
     }
-  }
 
-  const remaining = keys
-    .filter((key) => !preferredOrder.includes(key))
-    .sort((a, b) => a.localeCompare(b))
-
-  return [...ordered, ...remaining]
+    return a.localeCompare(b)
+  })
 }
 
-function renderFileGroup(groupKey, files) {
-  const title = getGroupTitle(groupKey)
-  const rows = files
-    .map((filePath) => {
-      const displayPath = toGroupRelativePath(groupKey, filePath)
-      return `| \`${displayPath}\` | ${describeFile(filePath)} |`
-    })
-    .join('\n')
+function renderAutoSyncBlock(filesText) {
+  return `<!-- README:AUTO-START -->
+### 자동 동기화
 
-  return `<details>
-<summary>${title} (${files.length}개 파일)</summary>
+#### 변경 파일(커밋 스테이징 기준)
+\`\`\`text
+${filesText}
+\`\`\`
 
-| 파일 | 설명 |
-| --- | --- |
-${rows}
+<!-- README:AUTO-END -->`
+}
+
+function buildUpdatesSection(existingReadmeText, autoSyncBlock, runMode) {
+  const existingSection = extractUpdatesSection(existingReadmeText)
+
+  if (!existingSection) {
+    return renderDefaultUpdatesSection(autoSyncBlock, runMode)
+  }
+
+  return ensureAutoSyncBlock(existingSection, autoSyncBlock)
+}
+
+function extractUpdatesSection(readmeText) {
+  const anchor = '## 업데이트 기록'
+  const start = readmeText.indexOf(anchor)
+  if (start === -1) {
+    return ''
+  }
+  return readmeText.slice(start).trim()
+}
+
+function renderDefaultUpdatesSection(autoSyncBlock, runMode) {
+  const today = new Date().toISOString().slice(0, 10)
+  const title = runMode === 'pre-push' ? 'README 자동 점검' : 'README 자동화 양식 정비'
+
+  return `## 업데이트 기록
+
+<details>
+<summary><strong>${today}</strong> - ${title}</summary>
+
+**요약**
+- README 자동화 출력 양식을 예시 기반 섹션형 템플릿으로 정리했습니다.
+- 자동 동기화 블록(\`README:AUTO-START/END\`)을 스크립트가 직접 갱신하도록 구성했습니다.
+
+${autoSyncBlock}
+
 </details>`
 }
 
-function getGroupTitle(groupKey) {
-  const titleMap = {
-    root: '루트',
-    '.githooks': 'Git Hooks',
-    '.vscode': 'VSCode 설정',
-    'apps/api': 'apps/api',
-    'apps/web': 'apps/web',
-    'packages/shared': 'packages/shared',
-    'packages/scoring': 'packages/scoring',
-    'packages/other': 'packages',
-    scripts: 'scripts',
-    docs: 'docs',
-    docs_result: 'docs_result',
+function ensureAutoSyncBlock(updateSection, autoSyncBlock) {
+  if (updateSection.includes('<!-- README:AUTO-START -->')) {
+    return updateSection.replace(
+      /<!-- README:AUTO-START -->[\s\S]*?<!-- README:AUTO-END -->/,
+      autoSyncBlock
+    )
   }
 
-  return titleMap[groupKey] ?? groupKey
-}
-
-function toGroupRelativePath(groupKey, filePath) {
-  if (groupKey === 'root') {
-    return filePath
+  if (updateSection.includes('</details>')) {
+    return updateSection.replace('</details>', `${autoSyncBlock}\n\n</details>`)
   }
 
-  const prefix = `${groupKey}/`
-  if (filePath.startsWith(prefix)) {
-    return filePath.slice(prefix.length)
-  }
-
-  return filePath
-}
-
-function describeFile(filePath) {
-  const normalized = filePath.replace(/\\/g, '/')
-  const ext = path.extname(normalized)
-
-  const exactMatches = {
-    '.gitignore': 'Git 무시 패턴입니다.',
-    '.githooks/pre-commit': '커밋 전에 README를 갱신하고 스테이징합니다.',
-    '.githooks/pre-push': '푸시 전에 README 최신 여부를 점검합니다.',
-    '.vscode/settings.json': 'VSCode 워크스페이스 설정입니다.',
-    'README.md': '자동 생성되는 프로젝트 문서입니다.',
-    'README.meta.json': '서비스/기능 설명 원본 메타데이터입니다.',
-    'package.json': '워크스페이스 루트 패키지 메타데이터 및 스크립트입니다.',
-    'pnpm-lock.yaml': '워크스페이스 의존성 잠금 파일입니다.',
-    'pnpm-workspace.yaml': 'pnpm 워크스페이스 범위 설정입니다.',
-    'scripts/update-readme.mjs': 'README 자동 갱신 스크립트입니다.',
-  }
-
-  if (exactMatches[normalized]) {
-    return exactMatches[normalized]
-  }
-
-  if (normalized.startsWith('apps/api/src/')) return 'Cloudflare Worker + Hono용 API 런타임 소스입니다.'
-  if (normalized.startsWith('apps/api/test/')) return 'API 테스트 소스 및 테스트 환경 타입 정의입니다.'
-  if (normalized.startsWith('apps/api/public/')) return 'API 앱 도구에서 제공하는 정적 자산입니다.'
-  if (normalized.startsWith('apps/api/')) return 'API 앱 설정 및 패키지 메타데이터입니다.'
-  if (normalized.startsWith('apps/web/src/app/')) return 'Next.js App Router 페이지/레이아웃/스타일 소스입니다.'
-  if (normalized.startsWith('apps/web/public/')) return '웹 앱 렌더링용 정적 자산입니다.'
-  if (normalized.startsWith('apps/web/')) return '웹 앱 설정 및 패키지 메타데이터입니다.'
-  if (normalized.startsWith('packages/shared/src/')) return '워크스페이스에서 재사용하는 공유 스키마/타입 정의입니다.'
-  if (normalized.startsWith('packages/shared/')) return '앱 간 계약을 위한 공유 패키지 설정입니다.'
-  if (normalized.startsWith('packages/scoring/src/')) return '카피 스코어링 구현 및 공개 export입니다.'
-  if (normalized.startsWith('packages/scoring/')) return '스코어링 패키지 설정입니다.'
-  if (normalized.startsWith('docs_result/')) return '구현 작업 결과 문서입니다.'
-  if (normalized.startsWith('docs/')) return '기획 및 구현 문서입니다.'
-  if (normalized.startsWith('scripts/')) return '자동화 실행 스크립트입니다.'
-
-  if (ext === '.md') return 'Markdown 문서 파일입니다.'
-  if (ext === '.json' || ext === '.jsonc') return 'JSON 설정 파일입니다.'
-  if (ext === '.yaml' || ext === '.yml') return 'YAML 설정 파일입니다.'
-  if (ext === '.ts' || ext === '.tsx' || ext === '.mts') return 'TypeScript 소스 파일입니다.'
-  if (ext === '.css') return 'CSS 스타일시트입니다.'
-  if (ext === '.ico' || ext === '.svg' || ext === '.html') return '정적 UI 자산입니다.'
-
-  return '프로젝트 파일입니다.'
+  return `${updateSection.trimEnd()}\n\n${autoSyncBlock}`
 }
