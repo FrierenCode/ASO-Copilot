@@ -79,5 +79,10 @@ ASO Copilot은 앱 카피 생성 입력을 검증하고, 카피 품질을 점수
 <summary>2026-02-28</summary>
 
 - 표시할 파일 변경 사항이 없습니다.
+- 추가: `.githooks/pre-commit`
+- 추가: `.githooks/pre-push`
+- 추가: `README.meta.json`
+- 수정: `package.json`
+- 추가: `scripts/update-readme.mjs`
 </details>
 <!-- UPDATE_NOTES_END -->
