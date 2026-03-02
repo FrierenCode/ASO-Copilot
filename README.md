@@ -114,6 +114,7 @@ flowchart LR
 | GET | `uid` | `apps/api/src/routes/entitlements.ts` |
 | GET | `uid` | `apps/api/src/routes/generate.ts` |
 | GET | `uid` | `apps/api/src/routes/me.ts` |
+| POST | `/api/events` | `apps/api/src/routes/events.ts` |
 | POST | `/auth/logout` | `apps/api/src/routes/auth.ts` |
 | POST | `/auth/request-magic-link` | `apps/api/src/routes/auth.ts` |
 | POST | `/generate` | `apps/api/src/routes/generate.ts` |
@@ -216,6 +217,7 @@ Polar 결제 연동:
 - `auth_magic_links`
 - `billing_customers`
 - `billing_subscriptions`
+- `events`
 - `generation_idempotency`
 - `generation_requests`
 - `plan_catalog`

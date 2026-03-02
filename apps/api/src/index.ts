@@ -8,6 +8,7 @@ import entitlementsRouter from './routes/entitlements'
 import webhooksRouter from './routes/webhooks.polar'
 import authRouter from './routes/auth'
 import meRouter from './routes/me'
+import eventsRouter from './routes/events'
 
 const app = new Hono<AppEnv>()
 
@@ -74,6 +75,7 @@ app.route('/', entitlementsRouter)
 app.route('/', webhooksRouter)
 app.route('/', authRouter)
 app.route('/', meRouter)
+app.route('/', eventsRouter)
 
 // ---------------------------------------------------------------------------
 // 404

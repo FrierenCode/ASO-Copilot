@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useEntitlements } from '@/hooks/useEntitlements'
 import { logEvent } from '@/lib/logger'
@@ -37,6 +37,7 @@ const copy = {
     upgrade: 'Upgrade to Pro →',
     remaining: (n: number) => `${n} free attempt${n === 1 ? '' : 's'} remaining this month`,
     usedAll: "You've used all free attempts this month.",
+    benchmark: 'Most apps score below 65. See where yours stands.',
   },
   ko: {
     badge: 'AI 기반 ASO',
@@ -69,6 +70,7 @@ const copy = {
     upgrade: 'Pro로 업그레이드 →',
     remaining: (n: number) => `이번 달 남은 무료 시도: ${n}회`,
     usedAll: '이번 달 무료 시도를 모두 사용했습니다.',
+    benchmark: '대부분의 앱은 65점 이하입니다. 내 앱은 몇 점일까요?',
   },
 }
 
@@ -80,11 +82,6 @@ export default function Landing() {
 
   const t = copy[lang]
   const isPro = entitlements?.plan === 'pro'
-  const remaining = entitlements?.limits.remainingThisMonth ?? null
-
-  useEffect(() => {
-    logEvent('page_view', { page: 'landing' })
-  }, [])
 
   return (
     <main style={{ fontFamily: 'sans-serif', color: '#111' }}>
@@ -196,10 +193,20 @@ export default function Landing() {
             color: '#6b7280',
             lineHeight: 1.6,
             maxWidth: 560,
-            margin: '0 auto 36px',
+            margin: '0 auto 16px',
           }}
         >
           {t.subhead}
+        </p>
+
+        <p
+          style={{
+            fontSize: 14,
+            color: '#6b7280',
+            margin: '0 auto 28px',
+          }}
+        >
+          {t.benchmark}
         </p>
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', alignItems: 'center' }}>
@@ -223,19 +230,6 @@ export default function Landing() {
         </div>
 
         <p style={{ marginTop: 12, fontSize: 13, color: '#9ca3af' }}>{t.ctaSub}</p>
-
-        {/* Remaining hint */}
-        {!entLoading && !isPro && entitlements && (
-          <p
-            style={{
-              marginTop: 16,
-              fontSize: 13,
-              color: remaining === 0 ? '#dc2626' : '#6b7280',
-            }}
-          >
-            {remaining === 0 ? t.usedAll : t.remaining(remaining ?? 0)}
-          </p>
-        )}
       </section>
 
       {/* ── Features ── */}

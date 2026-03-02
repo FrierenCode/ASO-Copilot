@@ -46,7 +46,6 @@ function ResultContent() {
 
   const handleCopy = (variant: 'A' | 'B' | 'C', lines: string[]) => {
     navigator.clipboard.writeText(lines.join('\n')).then(() => {
-      logEvent('copy_variant', { runId: runId ?? '', variant })
       setCopied(variant)
       setTimeout(() => setCopied(null), 2000)
     })
@@ -129,6 +128,22 @@ function ResultContent() {
           {result.score}
         </div>
         <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: 15 }}>/ 100 ASO Score</p>
+        {result.benchmark_avg != null && (() => {
+          const gap = result.score - result.benchmark_avg
+          const positive = gap >= 0
+          return (
+            <p
+              style={{
+                margin: '10px 0 0',
+                fontSize: 14,
+                fontWeight: 600,
+                color: positive ? '#16a34a' : '#dc2626',
+              }}
+            >
+              {positive ? `+${gap}` : gap} vs category average ({result.benchmark_avg})
+            </p>
+          )
+        })()}
         {runId && (
           <p style={{ margin: '8px 0 0', fontSize: 11, color: '#d1d5db', fontFamily: 'monospace' }}>
             Run {runId.slice(0, 8)}

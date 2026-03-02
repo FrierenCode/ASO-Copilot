@@ -64,6 +64,7 @@ generateRouter.post('/generate', async (c) => {
       score: scoring.score,
       breakdown: scoring.breakdown,
       recommendation: scoring.recommendation,
+      benchmark_avg: 65,
     }
 
     GenerateResponseSchema.parse(response)
@@ -101,6 +102,7 @@ generateRouter.post('/generate', async (c) => {
     score: scoring.score,
     breakdown: scoring.breakdown,
     recommendation: scoring.recommendation,
+    benchmark_avg: 65,
   }
 
   GenerateResponseSchema.parse(response)

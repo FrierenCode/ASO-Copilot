@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test'
 import { beforeAll } from 'vitest'
 import migration0001 from '../src/db/migrations/0001_billing_usage.sql?raw'
 import migration0002 from '../src/db/migrations/0002_revenue_v2_safe.sql?raw'
+import migration0003 from '../src/db/migrations/0003_events.sql?raw'
 
 function runMigration(sql: string) {
   // D1 exec() chokes on PRAGMA and comment-only chunks.
@@ -26,6 +27,9 @@ beforeAll(async () => {
     await env.DB.prepare(stmt).run()
   }
   for (const stmt of runMigration(migration0002)) {
+    await env.DB.prepare(stmt).run()
+  }
+  for (const stmt of runMigration(migration0003)) {
     await env.DB.prepare(stmt).run()
   }
 })

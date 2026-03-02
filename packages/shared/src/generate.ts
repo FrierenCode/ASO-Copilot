@@ -23,6 +23,7 @@ export const GenerateResponseSchema = z.object({
   score: z.number(),
   breakdown: BreakdownSchema,
   recommendation: z.array(z.string()),
+  benchmark_avg: z.number().optional(),
 })
 
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>

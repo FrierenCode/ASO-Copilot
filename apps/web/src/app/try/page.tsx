@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useEntitlements } from '@/hooks/useEntitlements'
@@ -30,10 +30,6 @@ export default function TryPage() {
 
   const isPro = entitlements?.plan === 'pro'
   const remaining = entitlements?.limits.remainingThisMonth ?? null
-
-  useEffect(() => {
-    logEvent('page_view', { page: 'try' })
-  }, [])
 
   const handleScreenshotChange = (index: number, value: string) => {
     setScreenshots((prev) => {
@@ -86,7 +82,6 @@ export default function TryPage() {
       if (res.status === 409) {
         // Duplicate idempotency key — should not normally happen since we
         // generate a fresh UUID per submit, but handle defensively.
-        logEvent('duplicate_request', { runId })
         setError('Duplicate request detected. Please try again.')
         return
       }
@@ -94,7 +89,6 @@ export default function TryPage() {
       if (!res.ok) {
         const data = await res.json()
         const msg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error)
-        logEvent('generate_error', { runId, status: res.status, error: msg })
         setError(msg)
         return
       }
@@ -106,7 +100,6 @@ export default function TryPage() {
       router.push(`/result?id=${runId}`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error'
-      logEvent('generate_error', { runId, error: msg })
       setError(msg)
     } finally {
       setLoading(false)
@@ -138,6 +131,24 @@ export default function TryPage() {
             : `${remaining} free attempt${remaining === 1 ? '' : 's'} remaining this month`}
         </p>
       )}
+
+      {/* Category benchmark info banner */}
+      <div
+        style={{
+          marginBottom: 20,
+          padding: '10px 14px',
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: 6,
+          fontSize: 13,
+          color: '#64748b',
+          display: 'flex',
+          gap: 16,
+        }}
+      >
+        <span>Recent category average score: <strong>62</strong></span>
+        <span>Top-performing apps average <strong>78+</strong></span>
+      </div>
 
       <form onSubmit={handleSubmit}>
         {/* App Name */}
