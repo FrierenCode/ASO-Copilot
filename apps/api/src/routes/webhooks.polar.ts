@@ -152,19 +152,21 @@ webhooksRouter.post('/webhooks/polar', async (c) => {
     const sourceUpdatedAt = (sub.modified_at as string) ?? eventCreatedAt ?? new Date().toISOString()
 
     // Resolve uid
+    const subMeta = sub.metadata as Record<string, unknown> | undefined
     const customer = sub.customer as Record<string, unknown> | undefined
     const customerMeta = customer?.metadata as Record<string, unknown> | undefined
-    const uidFromMeta =
-      (customerMeta?.reference_id as string) ??
-      (customerMeta?.uid as string) ??
-      null
+    const uidFromSubReferenceId = (subMeta?.reference_id as string) ?? null
+    const uidFromCustomerReferenceId = (customerMeta?.reference_id as string) ?? null
 
     const billingRepo = new BillingRepo(c.env.DB)
 
     // Try existing mapping first, then fall back to metadata
     let uid = await billingRepo.getUidByCustomerId(polarCustomerId)
-    if (!uid && uidFromMeta) {
-      uid = uidFromMeta
+    if (!uid && uidFromSubReferenceId) {
+      uid = uidFromSubReferenceId
+    }
+    if (!uid && uidFromCustomerReferenceId) {
+      uid = uidFromCustomerReferenceId
     }
 
     if (!uid) {

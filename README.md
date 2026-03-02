@@ -11,7 +11,7 @@
 - `GET /v1/entitlements`는 현재 플랜과 월간 사용량 상태를 반환합니다.
 - `POST /webhooks/polar`는 결제 이벤트를 받아 entitlement를 동기화합니다.
 - D1 마이그레이션 파일 1개로 데이터 모델 변경을 관리합니다.
-- 문서 자산: `docs/` 10개, `docs_result/` 4개의 Markdown 파일
+- 문서 자산: `docs/` 13개, `docs_result/` 4개의 Markdown 파일
 
 ## 기술 스택
 - pnpm 워크스페이스 (`pnpm@10.30.2`)
@@ -127,14 +127,15 @@
   docs/
     1.plan-shared-schema.md
     10.product-frontend-architecture-polar-checkout.md
+    11.webhook-uid-not-resolved-search-result.md
+    12.webhook-uid-resolution-update.md
+    13.free-default-search-and-write-conditions.md
     2.shared-schema-integration-result.md
     3.scoring-package-file-plan-and-claude-prompt.md
     4.scoring-v2.1-upgrade-result.md
     5.scoring-v2.2-upgrade-result.md
     6.web-scoring-integration-file-plan.md
-    7.api-contract-breakdown-cors-file-plan.md
-    8.web-export-pack-file-plan.md
-    9.production-saas-architecture-billing-entitlements.md
+    ... (추가 3개)
   docs_result/
     10-1.polar-checkout-frontend-result.md
     3-1.scoring-package-implementation-result.md
