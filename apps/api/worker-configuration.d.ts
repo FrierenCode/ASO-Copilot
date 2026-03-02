@@ -8,7 +8,25 @@ declare namespace Cloudflare {
 	interface Env {
 	}
 }
-interface Env extends Cloudflare.Env {}
+// Extended manually - re-run `wrangler types` after updating wrangler.jsonc
+interface Env extends Cloudflare.Env {
+	/** D1 database binding */
+	DB: D1Database;
+	/** HMAC secret for signing the aso_uid cookie. Set via `wrangler secret put UID_COOKIE_SECRET` */
+	UID_COOKIE_SECRET: string;
+	/** Polar webhook signing secret (Standard Webhooks format: whsec_...). Set via `wrangler secret put POLAR_WEBHOOK_SECRET` */
+	POLAR_WEBHOOK_SECRET: string;
+	/** Optional Polar API access token for future server-side calls */
+	POLAR_ACCESS_TOKEN?: string;
+	/**
+	 * Comma-separated allowed origins for credentialed CORS (e.g. https://app.example.com).
+	 * When set, Access-Control-Allow-Origin is set to the matching request origin and
+	 * Access-Control-Allow-Credentials: true is added.
+	 * Falls back to wildcard (*) with no credentials when unset.
+	 * Set via `wrangler secret put ALLOWED_ORIGIN` or .dev.vars.
+	 */
+	ALLOWED_ORIGIN?: string;
+}
 
 // Begin runtime types
 /*! *****************************************************************************

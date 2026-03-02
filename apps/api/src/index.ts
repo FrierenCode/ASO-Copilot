@@ -1,98 +1,69 @@
-﻿import { Hono } from 'hono'
+import { Hono } from 'hono'
+import type { AppEnv } from './env'
+import { uidCookieMiddleware } from './middleware/uid-cookie'
+import { requestIdMiddleware } from './middleware/request-id'
+import generateRouter from './routes/generate'
+import entitlementsRouter from './routes/entitlements'
+import webhooksRouter from './routes/webhooks.polar'
 
-import {
-  GenerateRequestSchema,
-  GenerateResponseSchema,
-  type GenerateRequest,
-  type GenerateResponse,
-} from '@aso-copilot/shared'
+const app = new Hono<AppEnv>()
 
-import { scoreCopy } from '@aso-copilot/scoring'
-
-const app = new Hono()
-
-/**
- * ✅ 완전 수동 CORS 처리
- */
+// ---------------------------------------------------------------------------
+// CORS
+// When ALLOWED_ORIGIN is set (comma-separated), credentialed requests from
+// matching origins receive a specific origin + Allow-Credentials: true.
+// Falls back to wildcard (*) for unrecognised or absent origins.
+// ---------------------------------------------------------------------------
 app.use('*', async (c, next) => {
-  // Preflight 요청 처리
+  const requestOrigin = c.req.header('origin') ?? ''
+  const allowedOrigins = (c.env.ALLOWED_ORIGIN ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+
+  const useCredentials = allowedOrigins.length > 0 && allowedOrigins.includes(requestOrigin)
+  const originHeader = useCredentials ? requestOrigin : '*'
+
   if (c.req.method === 'OPTIONS') {
-    return c.body(null, 204, {
-      'Access-Control-Allow-Origin': '*',
+    const headers: Record<string, string> = {
+      'Access-Control-Allow-Origin': originHeader,
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
       'Access-Control-Allow-Headers': '*',
-    })
+    }
+    if (useCredentials) headers['Access-Control-Allow-Credentials'] = 'true'
+    return c.body(null, 204, headers)
   }
 
   await next()
-
-  // 실제 응답에도 반드시 CORS 헤더 추가
-  c.header('Access-Control-Allow-Origin', '*')
+  c.header('Access-Control-Allow-Origin', originHeader)
   c.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   c.header('Access-Control-Allow-Headers', '*')
+  if (useCredentials) c.header('Access-Control-Allow-Credentials', 'true')
 })
 
-/**
- * Health check
- */
-app.get('/health', (c) => {
-  return c.json({
-    ok: true,
-    service: 'api',
-  })
-})
+// ---------------------------------------------------------------------------
+// Identity + request tracing
+// ---------------------------------------------------------------------------
+app.use('*', requestIdMiddleware)
 
-/**
- * Generate endpoint
- */
-app.post('/generate', async (c) => {
-  let body: unknown
+// uidCookieMiddleware runs on all routes except the webhook
+// (webhooks are server-to-server; no cookie identity needed there)
+app.use('/health', uidCookieMiddleware)
+app.use('/generate', uidCookieMiddleware)
+app.use('/v1/*', uidCookieMiddleware)
 
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json(
-      { ok: false, error: 'Invalid JSON' },
-      400
-    )
-  }
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+app.get('/health', (c) => c.json({ ok: true, service: 'api' }))
 
-  const parsed = GenerateRequestSchema.safeParse(body)
+app.route('/', generateRouter)
+app.route('/', entitlementsRouter)
+app.route('/', webhooksRouter)
 
-  if (!parsed.success) {
-    return c.json(
-      { ok: false, error: parsed.error.flatten() },
-      400
-    )
-  }
-
-  const request: GenerateRequest = parsed.data
-  const scoring = scoreCopy(parsed.data)
-
-  const response: GenerateResponse = {
-    variants: {
-      A: [`${request.appName} A1`, `${request.appName} A2`],
-      B: [`${request.category} B1`, `${request.category} B2`],
-      C: ['C1', 'C2'],
-    },
-    score: scoring.score,
-    breakdown: scoring.breakdown,
-    recommendation: scoring.recommendation,
-  }
-
-  GenerateResponseSchema.parse(response)
-
-  return c.json(response)
-})
-
-/**
- * 404
- */
-app.notFound((c) => {
-  return c.json(
-    { ok: false, error: 'Not Found' },
-    404
-  )
-})
+// ---------------------------------------------------------------------------
+// 404
+// ---------------------------------------------------------------------------
+app.notFound((c) => c.json({ ok: false, error: 'Not Found' }, 404))
 
 export default app

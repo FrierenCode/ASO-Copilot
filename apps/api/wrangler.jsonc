@@ -17,7 +17,30 @@
 	},
 	"observability": {
 		"enabled": true
-	}
+	},
+	/**
+	 * D1 Database
+	 * Create with: wrangler d1 create aso-copilot
+	 * Apply migration: wrangler d1 migrations apply aso-copilot
+	 * Secrets (set via `wrangler secret put <NAME>`):
+	 *   UID_COOKIE_SECRET     - random 32+ char string
+	 *   POLAR_WEBHOOK_SECRET  - from Polar dashboard (format: whsec_...)
+	 *   POLAR_ACCESS_TOKEN    - optional, Polar API key for future use
+	 *   ALLOWED_ORIGIN        - comma-separated origins for credentialed CORS
+	 *                           e.g. https://app.example.com,http://localhost:3000
+	 * For local dev, create apps/api/.dev.vars:
+	 *   UID_COOKIE_SECRET=<value>
+	 *   POLAR_WEBHOOK_SECRET=<value>
+	 *   ALLOWED_ORIGIN=http://localhost:3000
+	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "aso-copilot",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "src/db/migrations"
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
