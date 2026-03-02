@@ -102,6 +102,7 @@ flowchart LR
 
 | Method | Path | Source |
 | --- | --- | --- |
+| GET | `/api/admin/analytics` | `apps/api/src/routes/admin.analytics.ts` |
 | GET | `/api/me` | `apps/api/src/routes/me.ts` |
 | GET | `/auth/verify` | `apps/api/src/routes/auth.ts` |
 | GET | `/v1/entitlements` | `apps/api/src/routes/entitlements.ts` |
