@@ -1,796 +1,626 @@
 #!/usr/bin/env node
 
-import fs from 'node:fs'
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import process from 'node:process'
 
-const repoRoot = process.cwd()
-const readmePath = path.join(repoRoot, 'README.md')
+const README_PATH = path.join(process.cwd(), 'README.md')
+const API_ROUTES_DIR = path.join(process.cwd(), 'apps', 'api', 'src', 'routes')
+const MIGRATIONS_DIR = path.join(process.cwd(), 'apps', 'api', 'src', 'db', 'migrations')
 
-const args = process.argv.slice(2)
-const mode = getArgValue(args, '--mode') || 'manual'
-const checkOnly = args.includes('--check')
-
-const context = buildContext()
-const nextReadme = renderReadme(context)
-const currentReadme = readText(readmePath)
-const changed = nextReadme !== currentReadme
-
-if (checkOnly) {
-  if (changed) {
-    process.stderr.write('README.md가 최신 상태가 아닙니다. 실행: pnpm readme:update\n')
-    process.exit(1)
-  }
-  process.stdout.write('README.md가 최신 상태입니다.\n')
-  process.exit(0)
-}
-
-if (changed) {
-  fs.writeFileSync(readmePath, nextReadme, 'utf8')
-  process.stdout.write(`README.md를 업데이트했습니다. (${mode})\n`)
-} else {
-  process.stdout.write(`README.md가 이미 최신 상태입니다. (${mode})\n`)
-}
-
-function buildContext() {
-  const rootPackage = readJson(path.join(repoRoot, 'package.json')) ?? {}
-  const workspaceProjects = loadWorkspaceProjects()
-  const apiEndpoints = extractApiEndpoints()
-  const schemaSummary = extractSchemaSummary()
-  const migrationFiles = listFilesRecursive('apps/api/src/db/migrations').filter((filePath) =>
-    filePath.endsWith('.sql')
-  )
-  const docsCount = countMarkdownFiles('docs')
-  const docsResultCount = countMarkdownFiles('docs_result')
-  const techStack = collectTechStack(rootPackage, workspaceProjects, apiEndpoints, migrationFiles)
-  const overview = buildOverview(workspaceProjects, apiEndpoints, migrationFiles, docsCount, docsResultCount)
-  const directorySnapshot = buildDirectorySnapshot()
-
-  return {
-    rootPackage,
-    workspaceProjects,
-    apiEndpoints,
-    schemaSummary,
-    migrationFiles,
-    docsCount,
-    docsResultCount,
-    techStack,
-    overview,
-    directorySnapshot,
-  }
-}
-
-function renderReadme(context) {
-  const title = inferTitle(context.rootPackage)
-  const overviewSection = renderBulletList(
-    context.overview,
-    '저장소 메타데이터를 읽지 못했습니다. `pnpm readme:update`를 다시 실행하세요.'
-  )
-  const stackSection = renderBulletList(context.techStack, '기술 스택 정보를 감지하지 못했습니다.')
-  const workspaceTable = renderWorkspaceTable(context.workspaceProjects)
-  const apiTable = renderApiTable(context.apiEndpoints)
-  const schemaSection = renderSchemaSection(context.schemaSummary)
-  const directorySnapshot = context.directorySnapshot.join('\n')
-  const rootCommands = renderRootCommands(context.rootPackage)
-  const projectCommands = renderProjectCommands(context.workspaceProjects)
-
-  return `# ${title}
-
-> 이 문서는 \`scripts/update-readme.mjs\`가 저장소를 스캔해 자동 생성합니다.
-> 수동 수정 내용은 다음 자동 실행에서 덮어써질 수 있습니다.
-
-## 프로젝트 개요
-${overviewSection}
-
-## 기술 스택
-${stackSection}
-
-## 워크스페이스 패키지
-${workspaceTable}
-
-## API 엔드포인트 (apps/api)
-${apiTable}
-
-## 공유 스키마 요약 (packages/shared)
-${schemaSection}
-
-## 디렉터리 스냅샷
-\`\`\`text
-${directorySnapshot}
-\`\`\`
-
-## 자주 쓰는 명령어
-### 루트
-${rootCommands}
-
-### 앱 / 패키지
-${projectCommands}
-
-## README 자동화 (커밋/푸시)
-1. \`.githooks/pre-commit\`이 README를 재생성하고 \`README.md\`를 스테이징합니다.
-2. \`.githooks/pre-push\`가 README를 재확인하고 변경이 있으면 푸시를 중단합니다.
-3. 수동 업데이트: \`pnpm readme:update\`
-4. 점검 모드: \`pnpm readme:check\`
-5. 임시 우회: \`ASO_SKIP_README_HOOK=1\` (PowerShell: \`$env:ASO_SKIP_README_HOOK='1'\`)
-`
-}
-
-function inferTitle(rootPackage) {
-  const packageName = asString(rootPackage.name)
-  if (!packageName) {
-    return '프로젝트 README'
-  }
-  if (packageName === 'aso-copilot') {
-    return 'ASO Copilot'
-  }
-  return packageName
-}
-
-function buildOverview(projects, apiEndpoints, migrationFiles, docsCount, docsResultCount) {
-  const hasApi = hasProject(projects, 'apps/api')
-  const hasWeb = hasProject(projects, 'apps/web')
-  const hasShared = projects.some((project) => project.packageName === '@aso-copilot/shared')
-  const hasScoring = projects.some((project) => project.packageName === '@aso-copilot/scoring')
-
-  const endpointPaths = new Set(apiEndpoints.map((item) => item.path))
-  const lines = []
-
-  if (hasApi && hasWeb) {
-    lines.push('`apps/web`(Next.js)와 `apps/api`(Cloudflare Worker)를 함께 운영하는 pnpm 모노레포입니다.')
-  } else if (hasApi) {
-    lines.push('Cloudflare Worker 기반 API 프로젝트입니다.')
+function parseArgs(argv) {
+  const args = [...argv]
+  const result = {
+    mode: 'manual',
+    check: false,
   }
 
-  if (hasShared) {
-    lines.push('`packages/shared`에서 요청/응답 스키마를 공유해 API와 웹의 타입 계약을 맞춥니다.')
-  }
-
-  if (hasScoring) {
-    lines.push('`packages/scoring`에서 카피 점수 계산과 추천 로직을 담당합니다.')
-  }
-
-  if (endpointPaths.has('/generate')) {
-    lines.push('`POST /generate`는 생성된 카피 변형과 점수/추천 결과를 반환합니다.')
-  }
-
-  if (endpointPaths.has('/v1/entitlements')) {
-    lines.push('`GET /v1/entitlements`는 현재 플랜과 월간 사용량 상태를 반환합니다.')
-  }
-
-  if (endpointPaths.has('/webhooks/polar')) {
-    lines.push('`POST /webhooks/polar`는 결제 이벤트를 받아 entitlement를 동기화합니다.')
-  }
-
-  if (migrationFiles.length > 0) {
-    lines.push(`D1 마이그레이션 파일 ${migrationFiles.length}개로 데이터 모델 변경을 관리합니다.`)
-  }
-
-  if (docsCount > 0 || docsResultCount > 0) {
-    lines.push(
-      `문서 자산: \`docs/\` ${docsCount}개, \`docs_result/\` ${docsResultCount}개의 Markdown 파일`
-    )
-  }
-
-  return lines
-}
-
-function hasProject(projects, pathValue) {
-  return projects.some((project) => project.path === pathValue)
-}
-
-function renderWorkspaceTable(projects) {
-  if (projects.length === 0) {
-    return '워크스페이스 패키지를 찾지 못했습니다.'
-  }
-
-  const header = [
-    '| 경로 | 패키지 | 역할 | 주요 스크립트 |',
-    '| --- | --- | --- | --- |',
-  ]
-
-  const rows = projects.map((project) => {
-    const role = inferProjectRole(project)
-    const scriptNames = Object.keys(project.scripts)
-    const preview = scriptNames.length > 0
-      ? scriptNames.slice(0, 5).map((name) => `\`${name}\``).join(', ')
-      : '-'
-    return `| \`${project.path}\` | \`${project.packageName}\` | ${role} | ${preview} |`
-  })
-
-  return `${header.join('\n')}\n${rows.join('\n')}`
-}
-
-function inferProjectRole(project) {
-  const depSet = new Set(project.dependencyNames.map((name) => name.toLowerCase()))
-  const lowerName = project.packageName.toLowerCase()
-
-  if (project.path === 'apps/web' || depSet.has('next')) {
-    return '웹 애플리케이션'
-  }
-  if (project.path === 'apps/api' || depSet.has('hono')) {
-    return 'API Worker'
-  }
-  if (lowerName.includes('shared')) {
-    return '공유 스키마/타입'
-  }
-  if (lowerName.includes('scoring')) {
-    return '스코어링 로직'
-  }
-
-  return '워크스페이스 모듈'
-}
-
-function renderApiTable(endpoints) {
-  if (endpoints.length === 0) {
-    return '엔드포인트를 감지하지 못했습니다.'
-  }
-
-  const lines = [
-    '| Method | Path | Source |',
-    '| --- | --- | --- |',
-  ]
-
-  for (const endpoint of endpoints) {
-    lines.push(`| \`${endpoint.method}\` | \`${endpoint.path}\` | \`${endpoint.source}\` |`)
-  }
-
-  return lines.join('\n')
-}
-
-function renderSchemaSection(summary) {
-  if (
-    summary.requestFields.length === 0 &&
-    summary.responseFields.length === 0 &&
-    summary.breakdownFields.length === 0
-  ) {
-    return '스키마 요약을 추출하지 못했습니다.'
-  }
-
-  const requestFields = summary.requestFields.length > 0
-    ? summary.requestFields.map((field) => `- \`${field}\``).join('\n')
-    : '- 없음'
-  const responseFields = summary.responseFields.length > 0
-    ? summary.responseFields.map((field) => `- \`${field}\``).join('\n')
-    : '- 없음'
-  const breakdownFields = summary.breakdownFields.length > 0
-    ? summary.breakdownFields.map((field) => `- \`${field}\``).join('\n')
-    : '- 없음'
-
-  return `### GenerateRequestSchema
-${requestFields}
-
-### GenerateResponseSchema
-${responseFields}
-
-### BreakdownSchema
-${breakdownFields}`
-}
-
-function buildDirectorySnapshot() {
-  const lines = ['.']
-  lines.push(...walkDirectory('', 0, 3, 10))
-  return lines
-}
-
-function walkDirectory(relativeDir, depth, maxDepth, maxEntries) {
-  const absoluteDir = path.join(repoRoot, relativeDir)
-  if (!fs.existsSync(absoluteDir) || !fs.statSync(absoluteDir).isDirectory()) {
-    return []
-  }
-
-  const entries = fs
-    .readdirSync(absoluteDir, { withFileTypes: true })
-    .filter((entry) => !shouldIgnoreEntry(relativeDir, entry))
-    .sort((a, b) => sortEntries(relativeDir, a, b))
-
-  const sliced = entries.slice(0, maxEntries)
-  const lines = []
-
-  for (const entry of sliced) {
-    const childRelative = relativeDir ? `${relativeDir}/${entry.name}` : entry.name
-    const line = `${'  '.repeat(depth + 1)}${entry.name}${entry.isDirectory() ? '/' : ''}`
-    lines.push(line)
-
-    if (entry.isDirectory() && depth < maxDepth) {
-      lines.push(...walkDirectory(childRelative, depth + 1, maxDepth, maxEntries))
-    }
-  }
-
-  if (entries.length > sliced.length) {
-    lines.push(`${'  '.repeat(depth + 1)}... (추가 ${entries.length - sliced.length}개)`)
-  }
-
-  return lines
-}
-
-function shouldIgnoreEntry(relativeDir, entry) {
-  const ignoredDirectories = new Set([
-    '.git',
-    '.claude',
-    '.wrangler',
-    'node_modules',
-    '.pnpm-store',
-    '.next',
-    'out',
-    'dist',
-    'build',
-    'coverage',
-  ])
-
-  if (entry.isDirectory()) {
-    return ignoredDirectories.has(entry.name)
-  }
-
-  if (entry.name.endsWith('.tsbuildinfo')) {
-    return true
-  }
-  if (entry.name === '.DS_Store') {
-    return true
-  }
-  if (entry.name.startsWith('.env')) {
-    return true
-  }
-
-  if (!relativeDir && entry.name === 'pnpm-lock.yaml') {
-    return true
-  }
-
-  return false
-}
-
-function sortEntries(relativeDir, a, b) {
-  if (!relativeDir) {
-    return sortByRootPriority(a, b)
-  }
-
-  if (a.isDirectory() && !b.isDirectory()) {
-    return -1
-  }
-  if (!a.isDirectory() && b.isDirectory()) {
-    return 1
-  }
-  return a.name.localeCompare(b.name)
-}
-
-function sortByRootPriority(a, b) {
-  const rootOrder = [
-    'apps',
-    'packages',
-    'scripts',
-    '.githooks',
-    'docs',
-    'docs_result',
-    'README.md',
-    'package.json',
-    'pnpm-workspace.yaml',
-    '.gitignore',
-    '.vscode',
-  ]
-
-  const indexA = rootOrder.indexOf(a.name)
-  const indexB = rootOrder.indexOf(b.name)
-
-  if (indexA !== -1 || indexB !== -1) {
-    if (indexA === -1) return 1
-    if (indexB === -1) return -1
-    return indexA - indexB
-  }
-
-  if (a.isDirectory() && !b.isDirectory()) {
-    return -1
-  }
-  if (!a.isDirectory() && b.isDirectory()) {
-    return 1
-  }
-  return a.name.localeCompare(b.name)
-}
-
-function renderRootCommands(rootPackage) {
-  const scripts = normalizeScriptMap(rootPackage.scripts)
-  const entries = sortScriptEntries(Object.entries(scripts))
-
-  if (entries.length === 0) {
-    return '- 루트 스크립트를 찾지 못했습니다.'
-  }
-
-  return entries
-    .map(([name, value]) => `- \`pnpm ${name}\` - ${value}`)
-    .join('\n')
-}
-
-function renderProjectCommands(projects) {
-  if (projects.length === 0) {
-    return '- 워크스페이스 패키지를 찾지 못했습니다.'
-  }
-
-  const blocks = projects.map((project) => {
-    const entries = sortScriptEntries(Object.entries(project.scripts))
-    if (entries.length === 0) {
-      return `#### ${project.path}\n- 스크립트 없음`
-    }
-
-    const lines = entries
-      .slice(0, 7)
-      .map(([name, value]) => `- \`pnpm -C ${project.path} ${name}\` - ${value}`)
-      .join('\n')
-
-    return `#### ${project.path}\n${lines}`
-  })
-
-  return blocks.join('\n\n')
-}
-
-function sortScriptEntries(entries) {
-  const preferred = [
-    'dev',
-    'start',
-    'build',
-    'test',
-    'lint',
-    'deploy',
-    'readme:update',
-    'readme:check',
-    'prepare',
-  ]
-
-  return [...entries].sort(([nameA], [nameB]) => {
-    const indexA = preferred.indexOf(nameA)
-    const indexB = preferred.indexOf(nameB)
-
-    if (indexA !== -1 || indexB !== -1) {
-      if (indexA === -1) return 1
-      if (indexB === -1) return -1
-      return indexA - indexB
-    }
-
-    return nameA.localeCompare(nameB)
-  })
-}
-
-function renderBulletList(items, fallback) {
-  if (!items || items.length === 0) {
-    return `- ${fallback}`
-  }
-  return items.map((item) => `- ${item}`).join('\n')
-}
-
-function loadWorkspaceProjects() {
-  const groups = ['apps', 'packages']
-  const projects = []
-
-  for (const group of groups) {
-    const groupAbs = path.join(repoRoot, group)
-    if (!fs.existsSync(groupAbs) || !fs.statSync(groupAbs).isDirectory()) {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]
+    if (arg === '--check') {
+      result.check = true
       continue
     }
-
-    const dirs = fs
-      .readdirSync(groupAbs, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort((a, b) => a.localeCompare(b))
-
-    for (const dirName of dirs) {
-      const relPath = `${group}/${dirName}`
-      const packagePath = path.join(repoRoot, relPath, 'package.json')
-      if (!fs.existsSync(packagePath)) {
-        continue
-      }
-
-      const packageJson = readJson(packagePath) ?? {}
-      const scripts = normalizeScriptMap(packageJson.scripts)
-      const dependencyNames = [
-        ...Object.keys(normalizeScriptMap(packageJson.dependencies)),
-        ...Object.keys(normalizeScriptMap(packageJson.devDependencies)),
-      ]
-
-      projects.push({
-        path: relPath.replace(/\\/g, '/'),
-        packageName: asString(packageJson.name) || dirName,
-        version: asString(packageJson.version) || '0.0.0',
-        scripts,
-        dependencyNames,
-      })
+    if (arg === '--mode') {
+      result.mode = args[i + 1] ?? 'manual'
+      i += 1
+      continue
+    }
+    if (arg.startsWith('--mode=')) {
+      result.mode = arg.split('=')[1] ?? 'manual'
     }
   }
 
-  return projects.sort((a, b) => a.path.localeCompare(b.path))
+  return result
 }
 
-function normalizeScriptMap(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
-  }
-
-  const output = {}
-  for (const [key, script] of Object.entries(value)) {
-    if (typeof script === 'string' && script.trim()) {
-      output[key] = script.trim()
-    }
-  }
-  return output
-}
-
-function collectTechStack(rootPackage, projects, endpoints, migrationFiles) {
-  const dependencySet = new Set()
-  addDependencyNames(dependencySet, rootPackage)
-  for (const project of projects) {
-    for (const depName of project.dependencyNames) {
-      dependencySet.add(depName.toLowerCase())
-    }
-  }
-
-  const lines = []
-
-  if (asString(rootPackage.packageManager).startsWith('pnpm')) {
-    lines.push(`pnpm 워크스페이스 (\`${asString(rootPackage.packageManager)}\`)`)
-  }
-  if (dependencySet.has('typescript')) {
-    lines.push('TypeScript')
-  }
-  if (dependencySet.has('next')) {
-    lines.push('Next.js + React')
-  }
-  if (dependencySet.has('hono')) {
-    lines.push('Hono (API 라우터)')
-  }
-  if (dependencySet.has('wrangler')) {
-    lines.push('Cloudflare Workers + Wrangler')
-  }
-  if (migrationFiles.length > 0) {
-    lines.push('Cloudflare D1 (SQL 마이그레이션)')
-  }
-  if (dependencySet.has('zod')) {
-    lines.push('Zod (공유 스키마 검증)')
-  }
-  if (dependencySet.has('vitest')) {
-    lines.push('Vitest')
-  }
-  if (endpoints.some((endpoint) => endpoint.path === '/webhooks/polar')) {
-    lines.push('Polar 웹훅 연동')
-  }
-
-  return dedupe(lines)
-}
-
-function addDependencyNames(targetSet, packageJson) {
-  const deps = packageJson?.dependencies
-  const devDeps = packageJson?.devDependencies
-
-  if (deps && typeof deps === 'object') {
-    for (const dep of Object.keys(deps)) {
-      targetSet.add(dep.toLowerCase())
-    }
-  }
-  if (devDeps && typeof devDeps === 'object') {
-    for (const dep of Object.keys(devDeps)) {
-      targetSet.add(dep.toLowerCase())
-    }
+async function pathExists(targetPath) {
+  try {
+    await stat(targetPath)
+    return true
+  } catch {
+    return false
   }
 }
 
-function dedupe(values) {
-  return [...new Set(values)]
-}
+async function getWorkspacePackages() {
+  const roots = ['apps', 'packages']
+  const all = []
 
-function extractApiEndpoints() {
-  const files = []
+  for (const root of roots) {
+    const rootPath = path.join(process.cwd(), root)
+    if (!(await pathExists(rootPath))) continue
 
-  const appIndex = path.join(repoRoot, 'apps/api/src/index.ts')
-  if (fs.existsSync(appIndex)) {
-    files.push(appIndex)
-  }
-
-  const routeFiles = listFilesRecursive('apps/api/src/routes')
-    .filter((filePath) => filePath.endsWith('.ts') || filePath.endsWith('.mts'))
-    .map((filePath) => path.join(repoRoot, filePath))
-  files.push(...routeFiles)
-
-  const endpointPattern = /\b[a-zA-Z_$][\w$]*\.(get|post|put|patch|delete)\(\s*(['"`])([^'"`]+)\2/g
-  const methodOrder = { GET: 1, POST: 2, PUT: 3, PATCH: 4, DELETE: 5 }
-
-  const endpointMap = new Map()
-
-  for (const filePath of files) {
-    const source = readText(filePath)
-    let match
-    while ((match = endpointPattern.exec(source)) !== null) {
-      const method = match[1].toUpperCase()
-      const routePath = match[3].trim()
-      if (!routePath.startsWith('/')) {
-        continue
-      }
-
-      const key = `${method} ${routePath}`
-      if (!endpointMap.has(key)) {
-        endpointMap.set(key, {
-          method,
-          path: routePath,
-          source: toPosix(path.relative(repoRoot, filePath)),
+    const entries = await readdir(rootPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const relDir = path.join(root, entry.name)
+      const pkgJsonPath = path.join(process.cwd(), relDir, 'package.json')
+      if (!(await pathExists(pkgJsonPath))) continue
+      try {
+        const raw = await readFile(pkgJsonPath, 'utf8')
+        const pkg = JSON.parse(raw)
+        all.push({
+          name: pkg.name ?? relDir,
+          version: pkg.version ?? '0.0.0',
+          path: relDir.replaceAll('\\', '/'),
+          private: Boolean(pkg.private),
+        })
+      } catch {
+        all.push({
+          name: relDir,
+          version: 'unknown',
+          path: relDir.replaceAll('\\', '/'),
+          private: true,
         })
       }
     }
   }
 
-  return [...endpointMap.values()].sort((a, b) => {
-    if (a.path !== b.path) {
-      return a.path.localeCompare(b.path)
-    }
-    return (methodOrder[a.method] ?? 99) - (methodOrder[b.method] ?? 99)
-  })
+  all.sort((a, b) => a.path.localeCompare(b.path))
+  return all
 }
 
-function extractSchemaSummary() {
-  const sourcePath = path.join(repoRoot, 'packages/shared/src/generate.ts')
-  const source = readText(sourcePath)
-  if (!source) {
-    return {
-      requestFields: [],
-      responseFields: [],
-      breakdownFields: [],
-    }
-  }
+async function getApiRoutes() {
+  if (!(await pathExists(API_ROUTES_DIR))) return []
+  const files = await readdir(API_ROUTES_DIR)
+  const routes = []
+  const routeRegex = /\.\s*(get|post|put|patch|delete)\(\s*['"`]([^'"`]+)['"`]/g
 
-  return {
-    requestFields: extractZodObjectKeys(source, 'GenerateRequestSchema'),
-    responseFields: extractZodObjectKeys(source, 'GenerateResponseSchema'),
-    breakdownFields: extractZodObjectKeys(source, 'BreakdownSchema'),
-  }
-}
-
-function extractZodObjectKeys(source, schemaName) {
-  const marker = `${schemaName} = z.object(`
-  const markerIndex = source.indexOf(marker)
-  if (markerIndex === -1) {
-    return []
-  }
-
-  const openBraceIndex = source.indexOf('{', markerIndex + marker.length)
-  if (openBraceIndex === -1) {
-    return []
-  }
-
-  const body = extractObjectBody(source, openBraceIndex)
-  if (!body) {
-    return []
-  }
-
-  return parseTopLevelKeys(body)
-}
-
-function extractObjectBody(source, openBraceIndex) {
-  let depth = 0
-  for (let i = openBraceIndex + 1; i < source.length; i += 1) {
-    const ch = source[i]
-    if (ch === '{') {
-      depth += 1
-      continue
-    }
-    if (ch === '}') {
-      if (depth === 0) {
-        return source.slice(openBraceIndex + 1, i)
-      }
-      depth -= 1
-    }
-  }
-  return ''
-}
-
-function parseTopLevelKeys(body) {
-  const keys = []
-  let depth = 0
-  let cursor = 0
-
-  while (cursor < body.length) {
-    const ch = body[cursor]
-
-    if (ch === '{') {
-      depth += 1
-      cursor += 1
-      continue
-    }
-    if (ch === '}') {
-      depth = Math.max(0, depth - 1)
-      cursor += 1
-      continue
-    }
-
-    if (depth === 0 && /[A-Za-z_]/.test(ch)) {
-      const start = cursor
-      cursor += 1
-      while (cursor < body.length && /[A-Za-z0-9_]/.test(body[cursor])) {
-        cursor += 1
-      }
-      const key = body.slice(start, cursor)
-
-      let lookAhead = cursor
-      while (lookAhead < body.length && /\s/.test(body[lookAhead])) {
-        lookAhead += 1
-      }
-
-      if (body[lookAhead] === ':') {
-        keys.push(key)
-      }
-
-      cursor = lookAhead + 1
-      continue
-    }
-
-    cursor += 1
-  }
-
-  return dedupe(keys)
-}
-
-function listFilesRecursive(relativeDir) {
-  const absoluteDir = path.join(repoRoot, relativeDir)
-  if (!fs.existsSync(absoluteDir) || !fs.statSync(absoluteDir).isDirectory()) {
-    return []
-  }
-
-  const files = []
-
-  function walk(currentAbsolute, currentRelative) {
-    const entries = fs
-      .readdirSync(currentAbsolute, { withFileTypes: true })
-      .filter((entry) => !shouldIgnoreEntry(currentRelative, entry))
-      .sort((a, b) => sortEntries(currentRelative, a, b))
-
-    for (const entry of entries) {
-      const nextRelative = currentRelative ? `${currentRelative}/${entry.name}` : entry.name
-      const nextAbsolute = path.join(currentAbsolute, entry.name)
-
-      if (entry.isDirectory()) {
-        walk(nextAbsolute, nextRelative)
-      } else if (entry.isFile()) {
-        files.push(nextRelative.replace(/\\/g, '/'))
-      }
+  for (const file of files) {
+    if (!file.endsWith('.ts')) continue
+    const fullPath = path.join(API_ROUTES_DIR, file)
+    const content = await readFile(fullPath, 'utf8')
+    let m
+    while ((m = routeRegex.exec(content)) !== null) {
+      routes.push({
+        method: m[1].toUpperCase(),
+        path: m[2],
+        source: `apps/api/src/routes/${file}`,
+      })
     }
   }
 
-  walk(absoluteDir, toPosix(relativeDir))
-  return files
+  routes.sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`))
+  return routes
 }
 
-function countMarkdownFiles(relativeDir) {
-  return listFilesRecursive(relativeDir).filter((filePath) => filePath.endsWith('.md')).length
-}
+async function getTableNames() {
+  if (!(await pathExists(MIGRATIONS_DIR))) return []
+  const files = (await readdir(MIGRATIONS_DIR)).filter((name) => name.endsWith('.sql')).sort()
+  const set = new Set()
+  const tableRegex = /CREATE TABLE IF NOT EXISTS\s+([a-zA-Z0-9_]+)/gi
 
-function getArgValue(inputArgs, key) {
-  const index = inputArgs.indexOf(key)
-  if (index === -1 || index === inputArgs.length - 1) {
-    return ''
-  }
-  return inputArgs[index + 1]
-}
-
-function readText(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return ''
+  for (const file of files) {
+    const content = await readFile(path.join(MIGRATIONS_DIR, file), 'utf8')
+    let m
+    while ((m = tableRegex.exec(content)) !== null) {
+      set.add(m[1])
     }
-    return fs.readFileSync(filePath, 'utf8')
-  } catch {
-    return ''
   }
+
+  return [...set].sort()
 }
 
-function readJson(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return null
+function formatWorkspaceRows(packages) {
+  if (packages.length === 0) return '- 감지된 워크스페이스 패키지가 없습니다.'
+  return packages
+    .map((pkg) => `- \`${pkg.name}\` (\`${pkg.path}\`, v${pkg.version}, private=${pkg.private})`)
+    .join('\n')
+}
+
+function formatRouteRows(routes) {
+  if (routes.length === 0) return '| - | - | - |\n| - | - | - |'
+  return routes
+    .map((r) => `| ${r.method} | \`${r.path}\` | \`${r.source}\` |`)
+    .join('\n')
+}
+
+function formatTableRows(tables) {
+  if (tables.length === 0) return '- 감지된 D1 테이블이 없습니다.'
+  return tables.map((name) => `- \`${name}\``).join('\n')
+}
+
+function renderReadme(ctx) {
+  const workspaceRows = formatWorkspaceRows(ctx.packages)
+  const routeRows = formatRouteRows(ctx.routes)
+  const tableRows = formatTableRows(ctx.tables)
+
+  return `# ASO-Copilot
+
+> 이 문서는 \`scripts/update-readme.mjs\`로 자동 생성됩니다.  
+> 변경 사항 반영 후 \`pnpm readme:update\`로 재생성하세요.
+
+ASO-Copilot은 앱스토어 스크린샷 카피를 분석해 전환 관점의 개선안을 제안하는 Revenue 중심 AI SaaS입니다.
+
+- 프론트엔드: Next.js (Cloudflare Pages)
+- API: Hono + Cloudflare Workers
+- DB: Cloudflare D1 (SQLite)
+- 결제: Polar (Webhook 기반 Entitlement 반영)
+- 모노레포: pnpm workspace
+
+---
+
+## 1. 제품 개요 (Product Overview)
+
+ASO-Copilot은 다음 결과를 생성합니다.
+
+1. Conversion Score
+2. 카테고리 기준 Benchmark 비교
+3. 개선 Recommendation
+4. A/B/C 카피 Variants
+5. Export-ready 결과
+
+핵심 목표는 사용자가 "현재 카피가 어느 수준인지"를 빠르게 파악하고, 즉시 실험 가능한 대안을 얻도록 만드는 것입니다.
+
+---
+
+## 2. 비즈니스 모델 및 매출 로직 (Business Model & Revenue Logic)
+
+현재 코드베이스는 **v1 + v2 정책 공존 구조**입니다.
+
+- **v2 (권장/운영 목표)**: \`USAGE_POLICY_V2_ENABLED=true\`
+  - Anonymous: lifetime 2회
+  - Member(로그인 Free): 월 5회
+  - Pro: 무제한
+  - \`x-request-id\` 필수 + idempotency + postsuccess 차감
+- **v1 (호환 모드)**: \`USAGE_POLICY_V2_ENABLED=false\`
+  - Free 기본 월 3회 중심의 기존 흐름 유지
+
+Entitlement 판단 우선순위:
+
+1. \`user_entitlements\`의 \`plan_code=pro AND status=active\`면 무제한
+2. 아니면 인증 상태(세션) 기준으로 free/member 판단
+3. 비인증은 anonymous 제한 적용
+
+---
+
+## 3. 시스템 아키텍처 (System Architecture)
+
+\`\`\`mermaid
+flowchart LR
+  U[브라우저/클라이언트] --> W[Next.js on Cloudflare Pages]
+  W -->|HTTPS| A[Hono API on Cloudflare Workers]
+  A --> D[(Cloudflare D1)]
+  A --> O[OpenAI API]
+  P[Polar Checkout] -->|Webhook| A
+
+  subgraph API 내부
+    M1[uid-cookie middleware]
+    M2[session-cookie middleware]
+    M3[request-id middleware]
+    G[/generate]
+    E[/v1/entitlements]
+    AU[/auth/*]
+    ME[/api/me]
+    WH[/webhooks/polar]
+  end
+
+  A --> M1 --> M2 --> M3 --> G
+  A --> E
+  A --> AU
+  A --> ME
+  A --> WH
+\`\`\`
+
+아키텍처 원칙:
+
+- API는 상태 비저장(stateless)으로 수평 확장 가능해야 함
+- 요금/권한은 항상 서버 단에서 판정
+- 결제 이벤트는 Webhook Inbox로 중복 방지 처리
+
+---
+
+## 4. API 레퍼런스 (API Reference)
+
+### 4.1 핵심 엔드포인트
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | \`/health\` | 헬스체크 |
+| POST | \`/generate\` | 카피 분석/생성 |
+| GET | \`/v1/entitlements\` | 현재 uid/plan/usage 조회 |
+| POST | \`/webhooks/polar\` | Polar 이벤트 수신 |
+| POST | \`/auth/request-magic-link\` | 매직링크 발송 요청 |
+| GET | \`/auth/verify\` | 매직링크 검증 및 세션 생성 |
+| POST | \`/auth/logout\` | 로그아웃 |
+| GET | \`/api/me\` | 인증/플랜/사용량 정보 |
+
+### 4.2 감지된 라우트 목록(코드 스캔 기반)
+
+| Method | Path | Source |
+| --- | --- | --- |
+${routeRows}
+
+### 4.3 \`POST /generate\` 예시
+
+요청:
+
+\`\`\`http
+POST /generate HTTP/1.1
+Content-Type: application/json
+x-request-id: 2f7be43c-5f16-4e2f-8e6e-0b965c8e3202
+
+{
+  "appName": "FocusTimer",
+  "category": "Productivity",
+  "screenshots": [
+    "집중 세션을 쉽게 시작하세요",
+    "할 일 우선순위를 자동 정리",
+    "작업별 시간 통계를 한눈에",
+    "중요 알림만 스마트하게",
+    "매일 리포트로 루틴 강화",
+    "팀과 진행 상황 공유"
+  ]
+}
+\`\`\`
+
+성공 응답(\`200\`) 예시:
+
+\`\`\`json
+{
+  "variants": {
+    "A": ["FocusTimer A1", "FocusTimer A2"],
+    "B": ["Productivity B1", "Productivity B2"],
+    "C": ["C1", "C2"]
+  },
+  "score": 78,
+  "breakdown": {
+    "clarity": 80,
+    "benefit": 76,
+    "specificity": 78
+  },
+  "recommendation": "핵심 가치 제안을 첫 스크린샷에서 더 명확히 제시하세요."
+}
+\`\`\`
+
+에러 응답 예시:
+
+\`\`\`json
+{ "ok": false, "error": "MISSING_IDEMPOTENCY_KEY" }
+\`\`\`
+
+\`\`\`json
+{ "ok": false, "error": "DUPLICATE_REQUEST" }
+\`\`\`
+
+\`\`\`json
+{
+  "ok": false,
+  "error": "LIMIT_EXCEEDED",
+  "plan": "anonymous",
+  "upgrade_url": "/pricing"
+}
+\`\`\`
+
+---
+
+## 5. 플랜/Entitlement 흐름 (Plan & Entitlement Flow)
+
+\`\`\`mermaid
+flowchart TD
+  A[요청 수신] --> B{Pro active?}
+  B -->|Yes| U[무제한 허용]
+  B -->|No| C{로그인 세션?}
+  C -->|Yes| D[Member Free 월 5회]
+  C -->|No| E[Anonymous lifetime 2회]
+
+  D --> F{한도 초과?}
+  E --> F
+  F -->|No| G[생성 처리]
+  G --> H[성공 시 quota commit]
+  F -->|Yes| I[429 LIMIT_EXCEEDED]
+\`\`\`
+
+Polar 결제 연동:
+
+1. 웹에서 checkout 링크에 \`reference_id=<uid>\` 추가
+2. 결제 후 Polar가 webhook 전송
+3. 서버가 서명 검증 + 중복 검사 + uid 해석
+4. \`billing_*\` 및 \`user_entitlements\` 갱신
+5. 클라이언트가 \`/v1/entitlements\` 재조회해 Pro 반영 확인
+
+---
+
+## 6. 데이터베이스 스키마 (Database Schema)
+
+감지된 주요 D1 테이블:
+
+${tableRows}
+
+\`\`\`mermaid
+erDiagram
+  users ||--o| user_auth_profiles : has
+  users ||--o{ sessions : owns
+  users ||--o{ auth_magic_links : requests
+  users ||--|| user_entitlements : has
+  users ||--o{ usage_monthly : tracks
+  users ||--o| usage_lifetime : tracks
+  users ||--o{ generation_requests : audits
+  users ||--o{ generation_idempotency : dedup
+
+  users ||--o{ billing_customers : maps
+  billing_customers ||--o{ billing_subscriptions : has
+  polar_product_plan_map }o--|| plan_catalog : maps
+  billing_subscriptions }o--|| plan_catalog : uses
+  user_entitlements }o--|| plan_catalog : uses
+
+  webhook_inbox {
+    string provider
+    string webhook_id
+    string event_type
+    string status
+  }
+\`\`\`
+
+---
+
+## 7. 폴더 구조 (Folder Structure)
+
+\`\`\`text
+.
+|-- apps/
+|   |-- api/                 # Hono + Workers + D1
+|   |   +-- src/
+|   |       |-- middleware/
+|   |       |-- repositories/
+|   |       |-- routes/
+|   |       |-- services/
+|   |       +-- db/migrations/
+|   +-- web/                 # Next.js (App Router)
+|       +-- src/
+|           |-- app/
+|           |-- components/
+|           |-- hooks/
+|           +-- lib/
+|-- docs/                    # 설계/운영 문서
+|-- docs_result/             # 결과물 기록
+|-- packages/
+|   |-- scoring/
+|   +-- shared/
+|-- scripts/
+    +-- update-readme.mjs
+\`\`\`
+
+워크스페이스 패키지:
+
+${workspaceRows}
+
+---
+
+## 8. 설치 및 로컬 개발 (Setup & Local Development)
+
+사전 요구:
+
+- Node.js 20+
+- pnpm 10+
+- Wrangler 4+
+
+실행 순서:
+
+\`\`\`bash
+pnpm install
+pnpm dev:api
+pnpm dev:web
+\`\`\`
+
+권장 점검:
+
+\`\`\`bash
+pnpm readme:update
+pnpm readme:check
+pnpm -C apps/api test
+pnpm -C apps/web build
+\`\`\`
+
+---
+
+## 9. 환경 변수 (Environment Variables)
+
+API Worker(\`apps/api\`) 기준 예시:
+
+\`\`\`env
+UID_COOKIE_SECRET=replace-with-random-32-plus-chars
+POLAR_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxx
+ALLOWED_ORIGIN=https://app.example.com,http://localhost:3000
+APP_BASE_URL=https://app.example.com
+SESSION_COOKIE_SECRET=replace-with-random-32-plus-chars
+MAGIC_LINK_SECRET=replace-with-random-32-plus-chars
+MAGIC_LINK_TOKEN_TTL_MINUTES=15
+USAGE_POLICY_V2_ENABLED=true
+\`\`\`
+
+원칙:
+
+- 비밀값은 \`wrangler secret put\`로 저장
+- 웹 코드에는 비밀값을 절대 포함하지 않음
+- 쿠키는 \`HttpOnly + Secure + SameSite=Lax\` 기본 사용
+
+---
+
+## 10. 배포 (Deployment)
+
+### API (Cloudflare Workers)
+
+\`\`\`bash
+pnpm -C apps/api deploy
+\`\`\`
+
+### Web (Cloudflare Pages)
+
+- \`apps/web\` 빌드 결과를 Pages에 배포
+- API Origin은 환경별로 분리 (\`dev/staging/prod\`)
+- CORS \`ALLOWED_ORIGIN\`는 운영 도메인만 명시
+
+---
+
+## 11. 테스트 전략 (Testing Strategy)
+
+1. 단위 테스트
+   - scoring, entitlement 계산, usage gate 로직
+2. 통합 테스트
+   - \`/generate\` idempotency, quota commit, race condition
+3. 결제 회귀 테스트
+   - webhook signature 검증, 중복 이벤트 처리, entitlement 반영
+4. E2E UX 테스트
+   - pricing -> checkout -> success -> entitlements 반영 확인
+
+운영 직전 필수:
+
+- \`x-request-id\` 누락 시 400 확인
+- duplicate 요청 시 409 확인
+- 한도 초과 시 429 + 표준 JSON 형식 확인
+
+---
+
+## 12. 보안 원칙 (Security Practices)
+
+- Webhook은 HMAC 서명 검증 필수
+- \`webhook_inbox\`로 replay/duplication 방어
+- uid 쿠키는 서명(HMAC) 후 HttpOnly로 저장
+- 세션 토큰 원문 저장 금지(해시만 저장)
+- plan/권한 판정은 서버 단에서만 수행
+- CORS는 allowlist 기반으로 최소 권한 설정
+
+---
+
+## 13. 비용 제어 전략 (OpenAI Cost Control)
+
+1. quota gate를 생성 전/후에 명확히 적용 (postsuccess commit)
+2. idempotency로 중복 과금성 호출 차단
+3. 입력 길이 제한(스크린샷 텍스트 길이/개수)
+4. 모델 분리 전략(기본 모델 vs 고급 모델)
+5. 요청/응답 로깅에서 민감정보 최소화
+6. 월별 사용량/실패율/재시도율 모니터링
+
+---
+
+## 14. 코딩 컨벤션 및 기여 가이드 (Contribution Guide)
+
+- 모노레포 규칙: 패키지 경계 존중 (\`@aso-copilot/shared\` 재사용)
+- 타입 우선: 런타임 검증 + TypeScript 타입 동시 유지
+- API 변경 시:
+  1. shared schema 갱신
+  2. route/service/repository 반영
+  3. 문서/README 자동 갱신
+- PR 전 필수:
+  - 테스트 통과
+  - README 갱신(\`pnpm readme:update\`)
+  - 보안/비용 영향 확인
+
+---
+
+## 15. 트러블슈팅 & FAQ
+
+### Q1. \`uid_not_resolved\`가 webhook에서 발생합니다.
+
+- 원인: \`billing_customers\` 매핑 없음 + metadata의 \`reference_id\` 누락
+- 점검:
+  1. checkout URL에 \`reference_id=<uid>\`를 붙였는지
+  2. webhook payload의 \`subscription.metadata.reference_id\` 존재 여부
+  3. \`customer.metadata.reference_id\` 존재 여부
+
+### Q2. /generate가 409를 반환합니다.
+
+- 동일 \`x-request-id\` 재사용으로 idempotency 충돌
+- 매 요청마다 UUID 새로 생성 필요
+
+### Q3. 결제 후 Pro 반영이 늦습니다.
+
+- webhook 도착/처리 지연 가능
+- \`/v1/entitlements\`를 no-store로 재조회
+
+---
+
+## 16. 로드맵 및 기술부채 (Roadmap & Known Tech Debt)
+
+로드맵:
+
+1. OpenAI 실모델 기반 생성/평가 고도화
+2. 프로젝트/히스토리 UX 강화
+3. Premium 플랜 기능 분리(팀 협업, 고급 내보내기 등)
+
+기술부채:
+
+1. 현재 \`/generate\`는 스텁 응답 패턴이 포함되어 있어 실모델 연동 강화 필요
+2. 이메일 발송 구현체는 콘솔 sender 중심이며 실제 벤더 어댑터 확장 필요
+3. observability(구조화 로그/알람/대시보드) 표준화 필요
+
+---
+
+## 17. 아키텍처 의사결정 기록 (Architecture Decision Records)
+
+### ADR-001: Entitlement 단일 진실원
+
+- 결정: \`user_entitlements\`를 런타임 권한 판정의 단일 소스로 사용
+- 이유: 결제 공급자/정책 변경에도 API 판정 경로를 단순화
+
+### ADR-002: Webhook Inbox 패턴
+
+- 결정: \`webhook_inbox\`로 서명/중복/처리상태를 명시적으로 관리
+- 이유: 재전송/중복 이벤트 환경에서도 안전한 멱등 처리 보장
+
+### ADR-003: Postsuccess Quota Commit
+
+- 결정: 생성 성공 시점에 quota 차감
+- 이유: 실패 요청까지 선차감하는 불합리와 CS 비용을 줄임
+
+### ADR-004: Anonymous도 users row 강제 생성
+
+- 결정: uid-cookie 발급 시 \`users\` upsert 강제
+- 이유: FK 안정성 확보 및 결제 reference_id 매핑 일관성 유지
+`
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2))
+
+  const [packages, routes, tables] = await Promise.all([
+    getWorkspacePackages(),
+    getApiRoutes(),
+    getTableNames(),
+  ])
+
+  const nextReadme = renderReadme({ packages, routes, tables }).replace(/\r\n/g, '\n')
+
+  const currentReadme = (await pathExists(README_PATH)) ? (await readFile(README_PATH, 'utf8')).replace(/\r\n/g, '\n') : ''
+
+  if (opts.check) {
+    if (currentReadme !== nextReadme) {
+      console.error('[README] 최신 문서와 불일치합니다. `pnpm readme:update`를 실행하세요.')
+      process.exitCode = 1
+      return
     }
-    const raw = fs.readFileSync(filePath, 'utf8')
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch {
-    return null
+    console.log(`[README] 확인 완료: 최신 상태입니다. (mode=${opts.mode})`)
+    return
   }
+
+  await mkdir(path.dirname(README_PATH), { recursive: true })
+  await writeFile(README_PATH, nextReadme.endsWith('\n') ? nextReadme : `${nextReadme}\n`, 'utf8')
+  console.log(`[README] 갱신 완료: README.md (mode=${opts.mode})`)
 }
 
-function asString(value) {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function toPosix(value) {
-  return value.replace(/\\/g, '/')
-}
+main().catch((err) => {
+  console.error('[README] 스크립트 실행 실패:', err)
+  process.exitCode = 1
+})

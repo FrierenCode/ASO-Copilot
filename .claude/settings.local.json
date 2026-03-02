@@ -1,23 +1,21 @@
 {
-  "model": "opusplan",
-
   "cleanupPeriodDays": 14,
-  "includeCoAuthoredBy": false,
-
   "env": {
     "MAX_THINKING_TOKENS": "8000",
     "ENABLE_TOOL_SEARCH": "false"
   },
-
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
       "Bash(npm test:*)",
       "Bash(curl:*)",
       "Bash(pnpm install:*)",
-      "Bash(pnpm:*)"
+      "Bash(pnpm:*)",
+      "Bash(xargs cat:*)"
     ],
     "deny": [
       "MCPSearch"
     ]
-  }
+  },
+  "model": "opusplan"
 }
