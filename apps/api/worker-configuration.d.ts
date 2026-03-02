@@ -40,6 +40,8 @@ interface Env extends Cloudflare.Env {
 	USAGE_POLICY_V2_ENABLED?: string;
 	/** Magic link token TTL in minutes. Defaults to 15. */
 	MAGIC_LINK_TOKEN_TTL_MINUTES?: string;
+	/** Secret key for internal admin API. Set via `wrangler secret put ADMIN_SECRET` or .dev.vars. */
+	ADMIN_SECRET?: string;
 }
 
 // Begin runtime types

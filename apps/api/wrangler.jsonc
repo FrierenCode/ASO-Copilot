@@ -36,6 +36,7 @@
 	 *                                  (anon=2 lifetime, member=5/month, pro=unlimited)
 	 *                                  defaults to v1 (free=3/month) when unset/false
 	 *   MAGIC_LINK_TOKEN_TTL_MINUTES - token expiry in minutes (default: 15)
+	 *   ADMIN_SECRET                 - random string for internal admin API (x-admin-key header)
 	 * For local dev, create apps/api/.dev.vars:
 	 *   UID_COOKIE_SECRET=<value>
 	 *   POLAR_WEBHOOK_SECRET=<value>

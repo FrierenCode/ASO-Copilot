@@ -9,6 +9,7 @@ import webhooksRouter from './routes/webhooks.polar'
 import authRouter from './routes/auth'
 import meRouter from './routes/me'
 import eventsRouter from './routes/events'
+import adminRouter from './routes/admin.analytics'
 
 const app = new Hono<AppEnv>()
 
@@ -76,6 +77,7 @@ app.route('/', webhooksRouter)
 app.route('/', authRouter)
 app.route('/', meRouter)
 app.route('/', eventsRouter)
+app.route('/', adminRouter)
 
 // ---------------------------------------------------------------------------
 // 404
