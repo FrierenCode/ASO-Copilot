@@ -21,17 +21,29 @@
 	/**
 	 * D1 Database
 	 * Create with: wrangler d1 create aso-copilot
-	 * Apply migration: wrangler d1 migrations apply aso-copilot
+	 * Apply migrations: wrangler d1 migrations apply aso-copilot
 	 * Secrets (set via `wrangler secret put <NAME>`):
-	 *   UID_COOKIE_SECRET     - random 32+ char string
-	 *   POLAR_WEBHOOK_SECRET  - from Polar dashboard (format: whsec_...)
-	 *   POLAR_ACCESS_TOKEN    - optional, Polar API key for future use
-	 *   ALLOWED_ORIGIN        - comma-separated origins for credentialed CORS
-	 *                           e.g. https://app.example.com,http://localhost:3000
+	 *   UID_COOKIE_SECRET            - random 32+ char string
+	 *   POLAR_WEBHOOK_SECRET         - from Polar dashboard (format: whsec_...)
+	 *   POLAR_ACCESS_TOKEN           - optional, Polar API key for future use
+	 *   ALLOWED_ORIGIN               - comma-separated origins for credentialed CORS
+	 *                                  e.g. https://app.example.com,http://localhost:3000
+	 *   APP_BASE_URL                 - base URL for building magic link URLs
+	 *                                  e.g. https://app.example.com
+	 *   SESSION_COOKIE_SECRET        - random 32+ char string for session signing
+	 *   MAGIC_LINK_SECRET            - random 32+ char string for magic link signing
+	 *   USAGE_POLICY_V2_ENABLED      - set to 'true' to enable v2 quota policy
+	 *                                  (anon=2 lifetime, member=5/month, pro=unlimited)
+	 *                                  defaults to v1 (free=3/month) when unset/false
+	 *   MAGIC_LINK_TOKEN_TTL_MINUTES - token expiry in minutes (default: 15)
 	 * For local dev, create apps/api/.dev.vars:
 	 *   UID_COOKIE_SECRET=<value>
 	 *   POLAR_WEBHOOK_SECRET=<value>
 	 *   ALLOWED_ORIGIN=http://localhost:3000
+	 *   APP_BASE_URL=http://localhost:3000
+	 *   SESSION_COOKIE_SECRET=<value>
+	 *   MAGIC_LINK_SECRET=<value>
+	 *   USAGE_POLICY_V2_ENABLED=false
 	 */
 	"d1_databases": [
 		{

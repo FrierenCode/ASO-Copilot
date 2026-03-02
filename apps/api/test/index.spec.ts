@@ -201,6 +201,149 @@ describe('API Routes', () => {
     expect(data.source.type).toBe('free_default')
   })
 
+  // -------------------------------------------------------------------------
+  // V2 feature flag tests
+  // -------------------------------------------------------------------------
+
+  it('v2: missing x-request-id returns 400 MISSING_IDEMPOTENCY_KEY', async () => {
+    const v2Env = { ...env, USAGE_POLICY_V2_ENABLED: 'true' }
+
+    const req = new Request('http://localhost/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // No x-request-id header
+      body: JSON.stringify({
+        appName: 'V2 Test',
+        category: 'Productivity',
+        screenshots: ['s1.png', 's2.png', 's3.png', 's4.png', 's5.png', 's6.png'],
+      }),
+    })
+
+    const ctx = createExecutionContext()
+    const res = await app.fetch(req, v2Env, ctx)
+    await waitOnExecutionContext(ctx)
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toBe('MISSING_IDEMPOTENCY_KEY')
+  })
+
+  it('v2: anonymous user gets 429 after 2 lifetime generations', async () => {
+    const v2Env = { ...env, USAGE_POLICY_V2_ENABLED: 'true' }
+
+    const anonUid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    const secret = 'test-uid-cookie-secret-vitest-32ch'
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    )
+    const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(anonUid))
+    const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '')
+    const cookieHeader = `aso_uid=${anonUid}.${sig}`
+
+    const makeReq = (idempotencyKey: string) =>
+      new Request('http://localhost/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-request-id': idempotencyKey,
+          Cookie: cookieHeader,
+        },
+        body: JSON.stringify({
+          appName: 'Anon Lifetime Test',
+          category: 'Productivity',
+          screenshots: ['s1.png', 's2.png', 's3.png', 's4.png', 's5.png', 's6.png'],
+        }),
+      })
+
+    const ctx1 = createExecutionContext()
+    const r1 = await app.fetch(makeReq('v2-anon-1'), v2Env, ctx1)
+    await waitOnExecutionContext(ctx1)
+    expect(r1.status).toBe(200)
+
+    const ctx2 = createExecutionContext()
+    const r2 = await app.fetch(makeReq('v2-anon-2'), v2Env, ctx2)
+    await waitOnExecutionContext(ctx2)
+    expect(r2.status).toBe(200)
+
+    // 3rd request exceeds anonymous lifetime limit (2)
+    const ctx3 = createExecutionContext()
+    const r3 = await app.fetch(makeReq('v2-anon-3'), v2Env, ctx3)
+    await waitOnExecutionContext(ctx3)
+    expect(r3.status).toBe(429)
+    const data3 = await r3.json()
+    expect(data3.error).toBe('LIMIT_EXCEEDED')
+    expect(data3.plan).toBe('anonymous')
+    expect(data3.upgrade_url).toBe('/pricing')
+  })
+
+  it('v2: duplicate idempotency key returns 409 DUPLICATE_REQUEST', async () => {
+    const v2Env = { ...env, USAGE_POLICY_V2_ENABLED: 'true' }
+
+    const dupUid = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+    const secret = 'test-uid-cookie-secret-vitest-32ch'
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    )
+    const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(dupUid))
+    const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '')
+    const cookieHeader = `aso_uid=${dupUid}.${sig}`
+
+    const makeReq = () =>
+      new Request('http://localhost/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-request-id': 'v2-dedup-test-key-xyz',
+          Cookie: cookieHeader,
+        },
+        body: JSON.stringify({
+          appName: 'V2 Dedup Test',
+          category: 'Productivity',
+          screenshots: ['s1.png', 's2.png', 's3.png', 's4.png', 's5.png', 's6.png'],
+        }),
+      })
+
+    const ctx1 = createExecutionContext()
+    const r1 = await app.fetch(makeReq(), v2Env, ctx1)
+    await waitOnExecutionContext(ctx1)
+    expect(r1.status).toBe(200)
+
+    const ctx2 = createExecutionContext()
+    const r2 = await app.fetch(makeReq(), v2Env, ctx2)
+    await waitOnExecutionContext(ctx2)
+    expect(r2.status).toBe(409)
+    const d2 = await r2.json()
+    expect(d2.error).toBe('DUPLICATE_REQUEST')
+  })
+
+  it('GET /api/me returns shape', async () => {
+    const req = new Request('http://localhost/api/me')
+    const ctx = createExecutionContext()
+    const res = await app.fetch(req, env, ctx)
+    await waitOnExecutionContext(ctx)
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.uid).toBeDefined()
+    expect(typeof data.authenticated).toBe('boolean')
+    expect(data.plan).toBeDefined()
+    expect(data.usage).toBeDefined()
+  })
+
   it('scoreCopy should not inflate numeric score from filename-only screenshots', () => {
     const result = scoreCopy({
       appName: 'Note App',

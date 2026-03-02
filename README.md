@@ -10,8 +10,8 @@
 - `POST /generate`는 생성된 카피 변형과 점수/추천 결과를 반환합니다.
 - `GET /v1/entitlements`는 현재 플랜과 월간 사용량 상태를 반환합니다.
 - `POST /webhooks/polar`는 결제 이벤트를 받아 entitlement를 동기화합니다.
-- D1 마이그레이션 파일 1개로 데이터 모델 변경을 관리합니다.
-- 문서 자산: `docs/` 13개, `docs_result/` 4개의 Markdown 파일
+- D1 마이그레이션 파일 2개로 데이터 모델 변경을 관리합니다.
+- 문서 자산: `docs/` 15개, `docs_result/` 5개의 Markdown 파일
 
 ## 기술 스택
 - pnpm 워크스페이스 (`pnpm@10.30.2`)
@@ -35,6 +35,10 @@
 ## API 엔드포인트 (apps/api)
 | Method | Path | Source |
 | --- | --- | --- |
+| `GET` | `/api/me` | `apps/api/src/routes/me.ts` |
+| `POST` | `/auth/logout` | `apps/api/src/routes/auth.ts` |
+| `POST` | `/auth/request-magic-link` | `apps/api/src/routes/auth.ts` |
+| `GET` | `/auth/verify` | `apps/api/src/routes/auth.ts` |
 | `POST` | `/generate` | `apps/api/src/routes/generate.ts` |
 | `GET` | `/health` | `apps/api/src/index.ts` |
 | `GET` | `/v1/entitlements` | `apps/api/src/routes/entitlements.ts` |
@@ -130,14 +134,15 @@
     11.webhook-uid-not-resolved-search-result.md
     12.webhook-uid-resolution-update.md
     13.free-default-search-and-write-conditions.md
+    14.revenue-optimized-usage-and-magic-link-architecture.md
+    15.revenue-v2-production-safe-architecture.md
     2.shared-schema-integration-result.md
     3.scoring-package-file-plan-and-claude-prompt.md
     4.scoring-v2.1-upgrade-result.md
-    5.scoring-v2.2-upgrade-result.md
-    6.web-scoring-integration-file-plan.md
-    ... (추가 3개)
+    ... (추가 5개)
   docs_result/
     10-1.polar-checkout-frontend-result.md
+    15-1.revenue-v2-production-safe-result.md
     3-1.scoring-package-implementation-result.md
     9-1.ASO-Copilot Production Architecture.md
     9-2.billing-entitlements-implementation-result.md

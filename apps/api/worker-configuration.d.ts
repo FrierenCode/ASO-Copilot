@@ -26,6 +26,20 @@ interface Env extends Cloudflare.Env {
 	 * Set via `wrangler secret put ALLOWED_ORIGIN` or .dev.vars.
 	 */
 	ALLOWED_ORIGIN?: string;
+	/** Base URL of the app for building magic link URLs (e.g. https://app.example.com). Set via .dev.vars or wrangler secret put APP_BASE_URL */
+	APP_BASE_URL?: string;
+	/** Secret for HMAC-signing session tokens. Set via `wrangler secret put SESSION_COOKIE_SECRET` */
+	SESSION_COOKIE_SECRET?: string;
+	/** Secret for HMAC-signing magic link tokens. Set via `wrangler secret put MAGIC_LINK_SECRET` */
+	MAGIC_LINK_SECRET?: string;
+	/**
+	 * Feature flag for v2 usage policy (anon=2 lifetime, member=5/month, pro=unlimited).
+	 * Set to 'true' to enable. Defaults to v1 policy when unset or 'false'.
+	 * Set via .dev.vars: USAGE_POLICY_V2_ENABLED=true
+	 */
+	USAGE_POLICY_V2_ENABLED?: string;
+	/** Magic link token TTL in minutes. Defaults to 15. */
+	MAGIC_LINK_TOKEN_TTL_MINUTES?: string;
 }
 
 // Begin runtime types

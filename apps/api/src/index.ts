@@ -2,9 +2,12 @@ import { Hono } from 'hono'
 import type { AppEnv } from './env'
 import { uidCookieMiddleware } from './middleware/uid-cookie'
 import { requestIdMiddleware } from './middleware/request-id'
+import { sessionCookieMiddleware } from './middleware/session-cookie'
 import generateRouter from './routes/generate'
 import entitlementsRouter from './routes/entitlements'
 import webhooksRouter from './routes/webhooks.polar'
+import authRouter from './routes/auth'
+import meRouter from './routes/me'
 
 const app = new Hono<AppEnv>()
 
@@ -42,15 +45,24 @@ app.use('*', async (c, next) => {
 })
 
 // ---------------------------------------------------------------------------
-// Identity + request tracing
+// Request tracing (all routes)
 // ---------------------------------------------------------------------------
 app.use('*', requestIdMiddleware)
 
-// uidCookieMiddleware runs on all routes except the webhook
-// (webhooks are server-to-server; no cookie identity needed there)
+// ---------------------------------------------------------------------------
+// Identity middleware
+// uidCookieMiddleware: all routes except webhooks (server-to-server, no cookie)
+// sessionCookieMiddleware: routes that need auth state (auth, generate, api/*)
+// ---------------------------------------------------------------------------
 app.use('/health', uidCookieMiddleware)
 app.use('/generate', uidCookieMiddleware)
 app.use('/v1/*', uidCookieMiddleware)
+app.use('/auth/*', uidCookieMiddleware)
+app.use('/api/*', uidCookieMiddleware)
+
+app.use('/generate', sessionCookieMiddleware)
+app.use('/auth/*', sessionCookieMiddleware)
+app.use('/api/*', sessionCookieMiddleware)
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -60,6 +72,8 @@ app.get('/health', (c) => c.json({ ok: true, service: 'api' }))
 app.route('/', generateRouter)
 app.route('/', entitlementsRouter)
 app.route('/', webhooksRouter)
+app.route('/', authRouter)
+app.route('/', meRouter)
 
 // ---------------------------------------------------------------------------
 // 404

@@ -1,54 +1,113 @@
-import { GenerationRepo } from '../repositories/generation.repo'
+import { GenerationIdempotencyRepo } from '../repositories/generation-idempotency.repo'
 import { UsageRepo } from '../repositories/usage.repo'
-import { getOrCreateEntitlement, getCurrentPeriod } from './entitlement.service'
+import { UserAuthProfilesRepo } from '../repositories/user-auth-profiles.repo'
+import { EntitlementsRepo } from '../repositories/entitlements.repo'
+import { getCurrentPeriod } from './entitlement.service'
 
-export type GateResult =
-  | { ok: true; planCode: string }
-  | { ok: false; reason: 'duplicate' | 'limit_exceeded' }
+const V2_ANON_LIFETIME_LIMIT = 2
+const V2_MEMBER_MONTHLY_LIMIT = 5
 
-/**
- * Check quota and record the generation request atomically.
- *
- * - Returns ok:true when the request is allowed to proceed.
- * - Returns ok:false with reason='duplicate' if (uid, requestId) was already seen.
- * - Returns ok:false with reason='limit_exceeded' when the monthly quota is full.
- *
- * Pro users skip the counter entirely (counted=0).
- */
-export async function checkAndGate(
+export type UserPlan = 'anonymous' | 'free' | 'pro'
+
+export type GateV2StartResult =
+  | { ok: true; userPlan: UserPlan }
+  | { ok: false; reason: 'duplicate' | 'limit_exceeded'; userPlan: UserPlan }
+
+export async function startGateV2(
   db: D1Database,
   uid: string,
-  requestId: string,
-): Promise<GateResult> {
-  const genRepo = new GenerationRepo(db)
+  idempotencyKey: string,
+  isAuthenticated: boolean,
+): Promise<GateV2StartResult> {
+  const idempotencyRepo = new GenerationIdempotencyRepo(db)
+
+  // 1️⃣ idempotency 선점
+  const inserted = await idempotencyRepo.insert(uid, idempotencyKey)
+  if (!inserted) {
+    const userPlan = await resolveUserPlan(db, uid, isAuthenticated)
+    return { ok: false, reason: 'duplicate', userPlan }
+  }
+
+  // 2️⃣ 플랜 결정
+  const userPlan = await resolveUserPlan(db, uid, isAuthenticated)
+
+  // 3️⃣ Pro → 무제한
+  if (userPlan === 'pro') {
+    return { ok: true, userPlan }
+  }
+
+  // 4️⃣ 슬롯 존재 여부만 체크 (차감하지 않음)
+  const usageRepo = new UsageRepo(db)
   const { periodStart } = getCurrentPeriod()
 
-  // 1. Idempotency: reject duplicate request_id for this user
-  const existing = await genRepo.get(uid, requestId)
-  if (existing) {
-    return { ok: false, reason: 'duplicate' }
+  if (userPlan === 'anonymous') {
+    const current = await usageRepo.getLifetime(uid)
+    const used = current?.used_count ?? 0
+    if (used >= V2_ANON_LIFETIME_LIMIT) {
+      return { ok: false, reason: 'limit_exceeded', userPlan }
+    }
+  } else {
+    const current = await usageRepo.getMonthly(uid, periodStart)
+    const used = current?.used_count ?? 0
+    if (used >= V2_MEMBER_MONTHLY_LIMIT) {
+      return { ok: false, reason: 'limit_exceeded', userPlan }
+    }
   }
 
-  // 2. Fetch entitlement (creates free default if absent)
-  const ent = await getOrCreateEntitlement(db, uid)
-  const planCode = ent.plan_code
-  const limit = ent.usage_limit_monthly
+  return { ok: true, userPlan }
+}
 
-  // 3. Pro (or any plan with no limit) – skip counter
-  if (limit === null) {
-    await genRepo.insert(uid, requestId, periodStart, planCode, 'allowed', 0)
-    return { ok: true, planCode }
-  }
+export async function commitQuotaV2(
+  db: D1Database,
+  uid: string,
+  userPlan: UserPlan,
+): Promise<boolean> {
+  if (userPlan === 'pro') return true
 
-  // 4. Free – atomic increment within limit
   const usageRepo = new UsageRepo(db)
-  const incremented = await usageRepo.incrementIfBelowLimit(uid, periodStart, limit)
+  const { periodStart } = getCurrentPeriod()
 
-  if (!incremented) {
-    await genRepo.insert(uid, requestId, periodStart, planCode, 'rejected_limit', 0)
-    return { ok: false, reason: 'limit_exceeded' }
+  if (userPlan === 'anonymous') {
+    return usageRepo.incrementLifetimeIfBelowLimit(uid, V2_ANON_LIFETIME_LIMIT)
   }
 
-  await genRepo.insert(uid, requestId, periodStart, planCode, 'allowed', 1)
-  return { ok: true, planCode }
+  return usageRepo.incrementIfBelowLimit(uid, periodStart, V2_MEMBER_MONTHLY_LIMIT)
+}
+
+export async function markSucceeded(
+  db: D1Database,
+  uid: string,
+  idempotencyKey: string,
+) {
+  const repo = new GenerationIdempotencyRepo(db)
+  await repo.updateStatus(uid, idempotencyKey, 'succeeded')
+}
+
+export async function markFailed(
+  db: D1Database,
+  uid: string,
+  idempotencyKey: string,
+) {
+  const repo = new GenerationIdempotencyRepo(db)
+  await repo.updateStatus(uid, idempotencyKey, 'failed')
+}
+
+async function resolveUserPlan(
+  db: D1Database,
+  uid: string,
+  isAuthenticated: boolean,
+): Promise<UserPlan> {
+  const entRepo = new EntitlementsRepo(db)
+  const ent = await entRepo.get(uid)
+  if (ent?.plan_code === 'pro' && ent.status === 'active') {
+    return 'pro'
+  }
+
+  if (isAuthenticated) {
+    const profilesRepo = new UserAuthProfilesRepo(db)
+    const profile = await profilesRepo.get(uid)
+    if (profile?.user_type === 'member') return 'free'
+  }
+
+  return 'anonymous'
 }
