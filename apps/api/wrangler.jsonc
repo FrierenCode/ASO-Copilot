@@ -37,7 +37,7 @@
 		{
 			"binding": "DB",
 			"database_name": "aso-copilot",
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "7cfd4aa4-7970-4d47-bdaa-9cdb6663c303",
 			"migrations_dir": "src/db/migrations"
 		}
 	]
