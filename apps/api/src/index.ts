@@ -1,30 +1,39 @@
 ﻿import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+
 import {
   GenerateRequestSchema,
   GenerateResponseSchema,
   type GenerateRequest,
   type GenerateResponse,
 } from '@aso-copilot/shared'
+
 import { scoreCopy } from '@aso-copilot/scoring'
 
 const app = new Hono()
 
-app.use('*', async (c, next) => {
-  await next()
-  c.header('Access-Control-Allow-Origin', '*')
-  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  c.header('Access-Control-Allow-Headers', 'Content-Type')
-})
-
-app.options('*', (c) => {
-  return c.body(null, 204, {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+/**
+ * ✅ 1. 전역 CORS (라우트보다 반드시 위에 있어야 함)
+ */
+app.use(
+  '*',
+  cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type'],
   })
+)
+
+/**
+ * ✅ 2. Preflight 대응
+ */
+app.options('*', (c) => {
+  return c.body(null, 204)
 })
 
-// Health check
+/**
+ * Health check
+ */
 app.get('/health', (c) => {
   return c.json({
     ok: true,
@@ -32,7 +41,9 @@ app.get('/health', (c) => {
   })
 })
 
-// Generate endpoint
+/**
+ * Generate endpoint
+ */
 app.post('/generate', async (c) => {
   let body: unknown
 
@@ -68,12 +79,15 @@ app.post('/generate', async (c) => {
     recommendation: scoring.recommendation,
   }
 
+  // 응답 스키마 검증
   GenerateResponseSchema.parse(response)
 
   return c.json(response)
 })
 
-// 404 handler
+/**
+ * 404 handler
+ */
 app.notFound((c) => {
   return c.json(
     { ok: false, error: 'Not Found' },
