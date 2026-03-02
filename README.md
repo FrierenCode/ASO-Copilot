@@ -68,6 +68,49 @@ apps
       README.md
       tsconfig.json
       tsconfig.tsbuildinfo
+      out
+         __next.__PAGE__.txt
+         __next._full.txt
+         __next._head.txt
+         __next._index.txt
+         __next._tree.txt
+         _not-found.html
+         _not-found.txt
+         404.html
+         favicon.ico
+         file.svg
+         globe.svg
+         index.html
+         index.txt
+         next.svg
+         vercel.svg
+         window.svg
+         _next
+            static
+               chunks
+                  2e8e0953dae1dc42.js
+                  317a92b346ceda96.js
+                  5af32d58fc8f441e.css
+                  9a5948fc3e294f28.js
+                  a6dad97d9634a72d.js
+                  a6dad97d9634a72d.js.map
+                  b3983b18ef95234f.js
+                  c9ca56b3d249d933.js
+                  turbopack-a1d055041139150b.js
+               kTIPeOVvgWkLQgAkYarav
+                  _buildManifest.js
+                  _clientMiddlewareManifest.json
+                  _ssgManifest.js
+               media
+                  favicon.0b3bf435.ico
+         _not-found
+            __next._full.txt
+            __next._head.txt
+            __next._index.txt
+            __next._not-found.txt
+            __next._tree.txt
+            __next._not-found
+               __PAGE__.txt
       public
          file.svg
          globe.svg
@@ -145,4 +188,3 @@ docs_result
 <!-- README:AUTO-END -->
 
 </details>
-
