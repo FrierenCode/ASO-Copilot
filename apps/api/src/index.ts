@@ -9,6 +9,21 @@ import { scoreCopy } from '@aso-copilot/scoring'
 
 const app = new Hono()
 
+app.use('*', async (c, next) => {
+  await next()
+  c.header('Access-Control-Allow-Origin', '*')
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  c.header('Access-Control-Allow-Headers', 'Content-Type')
+})
+
+app.options('*', (c) => {
+  return c.body(null, 204, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  })
+})
+
 // Health check
 app.get('/health', (c) => {
   return c.json({
