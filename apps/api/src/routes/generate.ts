@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { GenerateRequestSchema, GenerateResponseSchema, type GenerateRequest, type GenerateResponse } from '@aso-copilot/shared'
 import { scoreCopy } from '@aso-copilot/scoring'
 import type { AppEnv } from '../env'
-import { checkAndGate, checkAndGateV2, markIdempotencySucceeded } from '../services/usage-gate.service'
 import {
   startGateV2,
   commitQuotaV2,
@@ -88,29 +87,6 @@ generateRouter.post('/generate', async (c) => {
     throw err
   }
 }
-
-  // --- V1 (default): entitlement-based usage gate ---
-  const gate = await checkAndGate(c.env.DB, uid, requestId)
-
-  if (!gate.ok) {
-    if (gate.reason === 'duplicate') {
-      return c.json(
-        { ok: false, error: 'DUPLICATE_REQUEST', message: 'Duplicate request id detected.' },
-        409,
-      )
-    }
-    // limit_exceeded
-    return c.json(
-      {
-        ok: false,
-        error: 'LIMIT_EXCEEDED',
-        message:
-          'Monthly generation limit reached. Upgrade to Pro for unlimited generations.',
-        upgrade_url: '/pricing',
-      },
-      429,
-    )
-  }
 
   // --- Generation ---
   const request: GenerateRequest = parsed.data
