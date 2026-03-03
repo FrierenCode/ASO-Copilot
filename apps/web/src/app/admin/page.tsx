@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import TopNav from '@/components/TopNav'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:8787'
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://api.gigigitg95.workers.dev'
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY ?? ''
 
 interface KPI {
@@ -32,169 +33,207 @@ interface AnalyticsData {
   hourly: HourRow[]
 }
 
-const cell: React.CSSProperties = {
+const cellStyle: React.CSSProperties = {
   padding: '8px 12px',
   textAlign: 'left',
   borderBottom: '1px solid #e5e7eb',
   fontSize: 13,
 }
 
-const headerCell: React.CSSProperties = {
-  ...cell,
+const headerCellStyle: React.CSSProperties = {
+  ...cellStyle,
   fontWeight: 700,
   background: '#f9fafb',
   color: '#374151',
 }
 
-function pctLabel(v: number | null) {
-  return v == null ? '—' : `${v}%`
+function percentLabel(value: number | null): string {
+  return value == null ? '-' : `${value}%`
 }
 
 export default function AdminPage() {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!ADMIN_KEY) {
+      setError('Admin key not configured')
+      setErrorDetail(
+        'Set NEXT_PUBLIC_ADMIN_KEY in Cloudflare Pages environment variables, then trigger a new deploy.',
+      )
+      setLoading(false)
+      return
+    }
+
     fetch(`${API_BASE}/api/admin/analytics`, {
       headers: { 'x-admin-key': ADMIN_KEY },
+      cache: 'no-store',
     })
-      .then(async (res) => {
-        if (res.status === 401) throw new Error('Unauthorized — check NEXT_PUBLIC_ADMIN_KEY')
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json() as Promise<{ ok: boolean } & AnalyticsData>
+      .then(async (response) => {
+        if (response.status === 401) {
+          throw new Error('Unauthorized: check NEXT_PUBLIC_ADMIN_KEY matches ADMIN_SECRET')
+        }
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        return response.json() as Promise<AnalyticsData>
       })
-      .then((json) => setData(json))
-      .catch((err: Error) => setError(err.message))
+      .then((analytics) => setData(analytics))
+      .catch((requestError: Error) => {
+        setError(requestError.message)
+        setErrorDetail(null)
+      })
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) {
-    return (
-      <main style={{ padding: 40, fontFamily: 'sans-serif', color: '#9ca3af' }}>
-        Loading analytics…
-      </main>
-    )
-  }
-
-  if (error) {
-    return (
-      <main style={{ padding: 40, fontFamily: 'sans-serif' }}>
-        <p style={{ color: '#dc2626', fontWeight: 600 }}>Error: {error}</p>
-      </main>
-    )
-  }
-
-  if (!data) return null
-
-  const { kpi, plan_distribution, hourly } = data
-
   return (
-    <main style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px 64px', fontFamily: 'sans-serif' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 32px', color: '#111' }}>
-        Admin — Funnel Analytics
-      </h1>
+    <main style={{ fontFamily: 'sans-serif', color: '#111827' }}>
+      <TopNav />
 
-      {/* ── KPI Cards ── */}
-      <section style={{ marginBottom: 40 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 14px', color: '#374151' }}>
-          Key Metrics
-        </h2>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: 12,
-          }}
-        >
-          {[
-            { label: 'Total Generates', value: kpi.generate_start },
-            { label: 'Successes', value: kpi.generate_success },
-            { label: 'Success Rate', value: pctLabel(kpi.success_rate) },
-            { label: 'Limit Exceeded', value: kpi.limit_exceeded },
-            { label: 'Limit Rate', value: pctLabel(kpi.limit_rate) },
-            { label: 'Result Views', value: kpi.result_view },
-            { label: 'Upgrade Clicks', value: kpi.upgrade_click },
-            { label: 'Upgrade Rate', value: pctLabel(kpi.upgrade_rate) },
-          ].map(({ label, value }) => (
-            <div
-              key={label}
-              style={{
-                padding: '16px 14px',
-                border: '1px solid #e5e7eb',
-                borderRadius: 8,
-                background: '#fafafa',
-              }}
-            >
-              <p style={{ margin: '0 0 6px', fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {label}
-              </p>
-              <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#111' }}>
-                {value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <section style={{ maxWidth: 920, margin: '30px auto 60px', padding: '0 16px' }}>
+        <h1 style={{ fontSize: 24, marginBottom: 22 }}>Admin Funnel Analytics</h1>
 
-      {/* ── Plan Distribution ── */}
-      <section style={{ marginBottom: 40 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 14px', color: '#374151' }}>
-          Plan Distribution (generate_start)
-        </h2>
-        {plan_distribution.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#9ca3af' }}>No data yet.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-            <thead>
-              <tr>
-                <th style={headerCell}>User State</th>
-                <th style={{ ...headerCell, textAlign: 'right' }}>Count</th>
-                <th style={{ ...headerCell, textAlign: 'right' }}>Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {plan_distribution.map((row) => {
-                const share = kpi.generate_start > 0
-                  ? Math.round((row.count / kpi.generate_start) * 1000) / 10
-                  : 0
-                return (
-                  <tr key={row.user_state}>
-                    <td style={cell}>{row.user_state}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>{row.count}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>{share}%</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        {loading && <p style={{ color: '#6b7280' }}>Loading analytics...</p>}
+
+        {!loading && error && (
+          <div
+            style={{
+              padding: '14px 16px',
+              borderRadius: 8,
+              background: '#fef2f2',
+              border: '1px solid #fca5a5',
+              color: '#991b1b',
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 700 }}>Unable to load admin analytics.</p>
+            <p style={{ margin: '6px 0 0', fontSize: 14 }}>{error}</p>
+            {errorDetail && <p style={{ margin: '6px 0 0', fontSize: 13 }}>{errorDetail}</p>}
+          </div>
         )}
-      </section>
 
-      {/* ── Hourly ── */}
-      <section>
-        <h2 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 14px', color: '#374151' }}>
-          Hourly generate_start (last 24 h)
-        </h2>
-        {hourly.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#9ca3af' }}>No data in the last 24 hours.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-            <thead>
-              <tr>
-                <th style={headerCell}>Hour (UTC)</th>
-                <th style={{ ...headerCell, textAlign: 'right' }}>Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hourly.map((row) => (
-                <tr key={row.hour}>
-                  <td style={{ ...cell, fontFamily: 'monospace' }}>{row.hour}</td>
-                  <td style={{ ...cell, textAlign: 'right' }}>{row.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {!loading && !error && data && (
+          <>
+            <section style={{ marginBottom: 36 }}>
+              <h2 style={{ fontSize: 16, marginBottom: 12 }}>Key Metrics</h2>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                {[
+                  { label: 'Total Generates', value: data.kpi.generate_start },
+                  { label: 'Successes', value: data.kpi.generate_success },
+                  { label: 'Success Rate', value: percentLabel(data.kpi.success_rate) },
+                  { label: 'Limit Exceeded', value: data.kpi.limit_exceeded },
+                  { label: 'Limit Rate', value: percentLabel(data.kpi.limit_rate) },
+                  { label: 'Result Views', value: data.kpi.result_view },
+                  { label: 'Upgrade Clicks', value: data.kpi.upgrade_click },
+                  { label: 'Upgrade Rate', value: percentLabel(data.kpi.upgrade_rate) },
+                ].map((item) => (
+                  <article
+                    key={item.label}
+                    style={{
+                      padding: '16px 14px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 8,
+                      background: '#fafafa',
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: '0 0 6px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: '#6b7280',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {item.label}
+                    </p>
+                    <p style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{item.value}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section style={{ marginBottom: 36 }}>
+              <h2 style={{ fontSize: 16, marginBottom: 12 }}>Plan Distribution (generate_start)</h2>
+              {data.plan_distribution.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#9ca3af' }}>No data yet.</p>
+              ) : (
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={headerCellStyle}>User State</th>
+                      <th style={{ ...headerCellStyle, textAlign: 'right' }}>Count</th>
+                      <th style={{ ...headerCellStyle, textAlign: 'right' }}>Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.plan_distribution.map((row) => {
+                      const share =
+                        data.kpi.generate_start > 0
+                          ? Math.round((row.count / data.kpi.generate_start) * 1000) / 10
+                          : 0
+
+                      return (
+                        <tr key={row.user_state}>
+                          <td style={cellStyle}>{row.user_state}</td>
+                          <td style={{ ...cellStyle, textAlign: 'right' }}>{row.count}</td>
+                          <td style={{ ...cellStyle, textAlign: 'right' }}>{share}%</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </section>
+
+            <section>
+              <h2 style={{ fontSize: 16, marginBottom: 12 }}>Hourly generate_start (last 24h)</h2>
+              {data.hourly.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#9ca3af' }}>No data in the last 24 hours.</p>
+              ) : (
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={headerCellStyle}>Hour (UTC)</th>
+                      <th style={{ ...headerCellStyle, textAlign: 'right' }}>Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.hourly.map((row) => (
+                      <tr key={row.hour}>
+                        <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{row.hour}</td>
+                        <td style={{ ...cellStyle, textAlign: 'right' }}>{row.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </>
         )}
       </section>
     </main>

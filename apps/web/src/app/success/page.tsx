@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import TopNav from '@/components/TopNav'
 import { useEntitlements } from '@/hooks/useEntitlements'
 
 const MAX_POLLS = 5
@@ -38,7 +39,9 @@ function SuccessContent() {
   }
 
   return (
-    <main style={{ maxWidth: 480, margin: '80px auto', padding: '0 20px', fontFamily: 'sans-serif', textAlign: 'center' }}>
+    <div style={{ fontFamily: 'sans-serif' }}>
+      <TopNav />
+      <main style={{ maxWidth: 480, margin: '80px auto', padding: '0 20px', textAlign: 'center' }}>
       {/* Always show receipt confirmation */}
       <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 32 }}>
         {checkoutId ? `Order ref: ${checkoutId}` : 'Payment received.'}
@@ -111,7 +114,8 @@ function SuccessContent() {
           </Link>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   )
 }
 

@@ -1,13 +1,13 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import type { Breakdown, GenerateResponse } from '@aso-copilot/shared'
-import { loadResult } from '@/lib/result-store'
+import { useSearchParams } from 'next/navigation'
+import TopNav from '@/components/TopNav'
 import { logEvent } from '@/lib/logger'
+import { loadResult } from '@/lib/result-store'
+import type { Breakdown, GenerateResponse } from '@aso-copilot/shared'
 
-// Human-readable labels for each breakdown dimension
 const DIMENSION_LABELS: Record<keyof Breakdown, string> = {
   cta: 'CTA Strength',
   benefit: 'Benefit Clarity',
@@ -16,7 +16,6 @@ const DIMENSION_LABELS: Record<keyof Breakdown, string> = {
   emotion: 'Emotional Pull',
 }
 
-// Score → colour mapping
 function scoreColor(score: number): string {
   if (score >= 80) return '#16a34a'
   if (score >= 60) return '#ca8a04'
@@ -26,9 +25,10 @@ function scoreColor(score: number): string {
 function ResultContent() {
   const searchParams = useSearchParams()
   const runId = searchParams.get('id')
+
   const [result, setResult] = useState<GenerateResponse | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [copied, setCopied] = useState<string | null>(null)
+  const [copiedVariant, setCopiedVariant] = useState<string | null>(null)
 
   useEffect(() => {
     if (!runId) {
@@ -46,279 +46,229 @@ function ResultContent() {
 
   const handleCopy = (variant: 'A' | 'B' | 'C', lines: string[]) => {
     navigator.clipboard.writeText(lines.join('\n')).then(() => {
-      setCopied(variant)
-      setTimeout(() => setCopied(null), 2000)
+      setCopiedVariant(variant)
+      setTimeout(() => setCopiedVariant(null), 1600)
     })
   }
 
   if (notFound) {
     return (
-      <main
-        style={{
-          maxWidth: 480,
-          margin: '80px auto',
-          padding: '0 20px',
-          fontFamily: 'sans-serif',
-          textAlign: 'center',
-        }}
-      >
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-        <h1 style={{ marginBottom: 12 }}>Result not found</h1>
-        <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 15 }}>
-          Results are stored locally and may have been cleared. Please generate a new report.
-        </p>
-        <Link
-          href="/try"
+      <main style={{ fontFamily: 'sans-serif', color: '#111827' }}>
+        <TopNav />
+        <section
           style={{
-            display: 'inline-block',
-            padding: '10px 28px',
-            background: '#2563eb',
-            color: '#fff',
-            borderRadius: 6,
-            fontWeight: 600,
-            textDecoration: 'none',
+            maxWidth: 500,
+            margin: '72px auto',
+            padding: '0 20px',
+            textAlign: 'center',
           }}
         >
-          Generate report →
-        </Link>
+          <h1 style={{ marginBottom: 12 }}>Result not found</h1>
+          <p style={{ marginBottom: 22, fontSize: 15, color: '#6b7280' }}>
+            Results are stored in local browser storage and may have been cleared.
+          </p>
+          <Link
+            href="/try"
+            style={{
+              display: 'inline-block',
+              padding: '10px 24px',
+              background: '#2563eb',
+              borderRadius: 6,
+              color: '#ffffff',
+              fontWeight: 700,
+              textDecoration: 'none',
+            }}
+          >
+            Generate report
+          </Link>
+        </section>
       </main>
     )
   }
 
   if (!result) {
     return (
-      <main style={{ padding: 40, fontFamily: 'sans-serif', textAlign: 'center', color: '#9ca3af' }}>
-        Loading…
+      <main style={{ fontFamily: 'sans-serif', color: '#111827' }}>
+        <TopNav />
+        <section style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading...</section>
       </main>
     )
   }
 
-  const scoreBg = result.score >= 80 ? '#f0fdf4' : result.score >= 60 ? '#fefce8' : '#fef2f2'
-  const scoreRingColor = scoreColor(result.score)
+  const scoreBackground = result.score >= 80 ? '#f0fdf4' : result.score >= 60 ? '#fefce8' : '#fef2f2'
+  const scoreBorder = scoreColor(result.score)
 
   return (
-    <main style={{ maxWidth: 680, margin: '0 auto', padding: '32px 16px 64px', fontFamily: 'sans-serif' }}>
-      {/* Back */}
-      <p style={{ margin: '0 0 28px' }}>
-        <Link href="/try" style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none' }}>
-          ← New report
-        </Link>
-      </p>
+    <main style={{ fontFamily: 'sans-serif', color: '#111827' }}>
+      <TopNav />
 
-      {/* Score hero */}
-      <div
-        style={{
-          textAlign: 'center',
-          padding: '36px 24px',
-          background: scoreBg,
-          borderRadius: 16,
-          marginBottom: 32,
-          border: `2px solid ${scoreRingColor}22`,
-        }}
-      >
+      <section style={{ maxWidth: 720, margin: '30px auto 60px', padding: '0 16px' }}>
+        <p style={{ margin: '0 0 24px' }}>
+          <Link href="/try" style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none' }}>
+            New report
+          </Link>
+        </p>
+
         <div
           style={{
-            fontSize: 80,
-            fontWeight: 900,
-            lineHeight: 1,
-            color: scoreRingColor,
-            letterSpacing: '-2px',
+            textAlign: 'center',
+            padding: '34px 24px',
+            background: scoreBackground,
+            borderRadius: 16,
+            border: `2px solid ${scoreBorder}33`,
+            marginBottom: 30,
           }}
         >
-          {result.score}
-        </div>
-        <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: 15 }}>/ 100 ASO Score</p>
-        {result.benchmark_avg != null && (() => {
-          const gap = result.score - result.benchmark_avg
-          const positive = gap >= 0
-          return (
-            <p
-              style={{
-                margin: '10px 0 0',
-                fontSize: 14,
-                fontWeight: 600,
-                color: positive ? '#16a34a' : '#dc2626',
-              }}
-            >
-              {positive ? `+${gap}` : gap} vs category average ({result.benchmark_avg})
-            </p>
-          )
-        })()}
-        {runId && (
-          <p style={{ margin: '8px 0 0', fontSize: 11, color: '#d1d5db', fontFamily: 'monospace' }}>
-            Run {runId.slice(0, 8)}
+          <p style={{ margin: 0, fontSize: 80, lineHeight: 1, letterSpacing: '-0.04em', fontWeight: 900, color: scoreBorder }}>
+            {result.score}
           </p>
-        )}
-      </div>
+          <p style={{ marginTop: 8, fontSize: 15, color: '#6b7280' }}>/ 100 ASO Score</p>
 
-      {/* Breakdown */}
-      <section style={{ marginBottom: 36 }}>
-        <h2 style={{ fontSize: 17, marginBottom: 16 }}>Score Breakdown</h2>
-        <div
-          style={{
-            border: '1px solid #e5e7eb',
-            borderRadius: 10,
-            overflow: 'hidden',
-          }}
-        >
-          {(Object.entries(result.breakdown) as [keyof Breakdown, number][]).map(
-            ([dim, val], i) => (
+          {result.benchmark_avg != null && (() => {
+            const gap = result.score - result.benchmark_avg
+            const isPositive = gap >= 0
+            return (
+              <p style={{ marginTop: 10, fontWeight: 700, color: isPositive ? '#15803d' : '#dc2626' }}>
+                {isPositive ? `+${gap}` : gap} vs category average ({result.benchmark_avg})
+              </p>
+            )
+          })()}
+
+          {runId && (
+            <p style={{ marginTop: 8, fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>
+              Run {runId.slice(0, 8)}
+            </p>
+          )}
+        </div>
+
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={{ fontSize: 18, marginBottom: 14 }}>Score Breakdown</h2>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            {(Object.entries(result.breakdown) as [keyof Breakdown, number][]).map(([dimension, value], index) => (
               <div
-                key={dim}
+                key={dimension}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 1fr 48px',
-                  alignItems: 'center',
+                  gridTemplateColumns: '150px 1fr 48px',
                   gap: 12,
-                  padding: '12px 16px',
-                  borderBottom: i < 4 ? '1px solid #f3f4f6' : 'none',
-                  background: i % 2 === 0 ? '#fff' : '#fafafa',
+                  alignItems: 'center',
+                  padding: '12px 14px',
+                  borderBottom: index < 4 ? '1px solid #f3f4f6' : 'none',
+                  background: index % 2 === 0 ? '#ffffff' : '#fafafa',
                 }}
               >
-                <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>
-                  {DIMENSION_LABELS[dim]}
-                </span>
-                <div
-                  style={{
-                    background: '#e5e7eb',
-                    borderRadius: 4,
-                    height: 8,
-                    overflow: 'hidden',
-                  }}
-                >
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{DIMENSION_LABELS[dimension]}</span>
+                <div style={{ background: '#e5e7eb', borderRadius: 999, height: 8 }}>
                   <div
                     style={{
-                      background: val >= 16 ? '#16a34a' : val >= 12 ? '#ca8a04' : '#ef4444',
                       height: '100%',
-                      width: `${(val / 20) * 100}%`,
-                      borderRadius: 4,
-                      transition: 'width 0.6s ease',
+                      borderRadius: 999,
+                      background: value >= 16 ? '#16a34a' : value >= 12 ? '#ca8a04' : '#ef4444',
+                      width: `${(value / 20) * 100}%`,
+                      transition: 'width 0.5s ease',
                     }}
                   />
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 600, textAlign: 'right', color: '#374151' }}>
-                  {val}/20
-                </span>
+                <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{value}/20</span>
               </div>
-            ),
-          )}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
 
-      {/* Recommendations */}
-      <section style={{ marginBottom: 36 }}>
-        <h2 style={{ fontSize: 17, marginBottom: 14 }}>Recommendations</h2>
-        <ul style={{ margin: 0, paddingLeft: 20 }}>
-          {result.recommendation.map((r, i) => (
-            <li
-              key={i}
-              style={{
-                fontSize: 14,
-                color: '#374151',
-                lineHeight: 1.6,
-                marginBottom: 8,
-              }}
-            >
-              {r}
-            </li>
-          ))}
-        </ul>
-      </section>
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={{ fontSize: 18, marginBottom: 12 }}>Recommendations</h2>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {result.recommendation.map((item, index) => (
+              <li key={index} style={{ marginBottom: 8, lineHeight: 1.6, color: '#374151' }}>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </section>
 
-      {/* Variants */}
-      <section>
-        <h2 style={{ fontSize: 17, marginBottom: 14 }}>Keyword Variants</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {(['A', 'B', 'C'] as const).map((v) => (
-            <div
-              key={v}
-              style={{
-                border: '1px solid #e5e7eb',
-                borderRadius: 10,
-                overflow: 'hidden',
-              }}
-            >
-              {/* Variant header */}
-              <div
+        <section>
+          <h2 style={{ fontSize: 18, marginBottom: 12 }}>Keyword Variants</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {(['A', 'B', 'C'] as const).map((variant) => (
+              <article
+                key={variant}
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '10px 16px',
-                  background: '#f9fafb',
-                  borderBottom: '1px solid #e5e7eb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 10,
+                  overflow: 'hidden',
                 }}
               >
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#1f2937' }}>
-                  Variant {v}
-                </span>
-                <button
-                  onClick={() => handleCopy(v, result.variants[v])}
+                <div
                   style={{
-                    padding: '4px 12px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: copied === v ? '#16a34a' : '#2563eb',
-                    background: 'transparent',
-                    border: `1px solid ${copied === v ? '#16a34a' : '#93c5fd'}`,
-                    borderRadius: 4,
-                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '10px 14px',
+                    background: '#f9fafb',
+                    borderBottom: '1px solid #e5e7eb',
                   }}
                 >
-                  {copied === v ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-
-              {/* Variant lines */}
-              <ul style={{ margin: 0, padding: '12px 16px 12px 32px' }}>
-                {result.variants[v].map((item, i) => (
-                  <li
-                    key={i}
-                    style={{ fontSize: 14, color: '#374151', lineHeight: 1.7, marginBottom: 2 }}
+                  <strong style={{ fontSize: 14 }}>Variant {variant}</strong>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(variant, result.variants[variant])}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: 4,
+                      border: `1px solid ${copiedVariant === variant ? '#16a34a' : '#93c5fd'}`,
+                      background: '#ffffff',
+                      color: copiedVariant === variant ? '#16a34a' : '#2563eb',
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
                   >
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                    {copiedVariant === variant ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <ul style={{ margin: 0, padding: '12px 14px 12px 32px' }}>
+                  {result.variants[variant].map((line, index) => (
+                    <li key={index} style={{ marginBottom: 4, lineHeight: 1.65, color: '#374151' }}>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <div style={{ marginTop: 34, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <Link
+            href="/try"
+            style={{
+              display: 'inline-block',
+              padding: '10px 22px',
+              borderRadius: 6,
+              background: '#f3f4f6',
+              color: '#374151',
+              fontWeight: 700,
+              textDecoration: 'none',
+            }}
+          >
+            Generate another
+          </Link>
+          <Link
+            href="/pricing"
+            style={{
+              display: 'inline-block',
+              padding: '10px 22px',
+              borderRadius: 6,
+              background: '#2563eb',
+              color: '#ffffff',
+              fontWeight: 700,
+              textDecoration: 'none',
+            }}
+          >
+            Upgrade to Pro
+          </Link>
         </div>
       </section>
-
-      {/* CTA to generate another */}
-      <div style={{ marginTop: 40, textAlign: 'center' }}>
-        <Link
-          href="/try"
-          style={{
-            display: 'inline-block',
-            padding: '10px 28px',
-            background: '#f3f4f6',
-            color: '#374151',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 14,
-            textDecoration: 'none',
-            marginRight: 12,
-          }}
-        >
-          Generate another →
-        </Link>
-        <Link
-          href="/pricing"
-          style={{
-            display: 'inline-block',
-            padding: '10px 28px',
-            background: '#2563eb',
-            color: '#fff',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 14,
-            textDecoration: 'none',
-          }}
-        >
-          Upgrade to Pro →
-        </Link>
-      </div>
     </main>
   )
 }
@@ -327,8 +277,9 @@ export default function ResultPage() {
   return (
     <Suspense
       fallback={
-        <main style={{ padding: 40, fontFamily: 'sans-serif', textAlign: 'center', color: '#9ca3af' }}>
-          Loading…
+        <main style={{ fontFamily: 'sans-serif', color: '#111827' }}>
+          <TopNav />
+          <section style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading...</section>
         </main>
       }
     >
