@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { AppLanguage, useLanguage } from '@/hooks/useLanguage'
 
 interface TopNavProps {
@@ -9,6 +10,7 @@ interface TopNavProps {
   onLanguageChange?: (nextLanguage: AppLanguage) => void
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:8787'
 const ADMIN_LINK_ENABLED = Boolean(process.env.NEXT_PUBLIC_ADMIN_KEY)
 
 const navLinkStyle: React.CSSProperties = {
@@ -25,9 +27,22 @@ function isActive(pathname: string, href: string): boolean {
 export default function TopNav({ language, onLanguageChange }: TopNavProps) {
   const pathname = usePathname()
   const { language: storedLanguage, setLanguage: setStoredLanguage } = useLanguage()
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null)
 
   const activeLanguage = language ?? storedLanguage
   const setLanguage = onLanguageChange ?? setStoredLanguage
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/me`, { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data: { authenticated: boolean }) => setAuthenticated(data.authenticated))
+      .catch(() => setAuthenticated(false))
+  }, [])
+
+  const handleLogout = async () => {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+    window.location.reload()
+  }
 
   const toggleLanguage = () => {
     setLanguage(activeLanguage === 'en' ? 'kr' : 'en')
@@ -92,27 +107,46 @@ export default function TopNav({ language, onLanguageChange }: TopNavProps) {
             Pricing
           </Link>
 
-          <Link
-            href="/login"
-            style={{
-              ...navLinkStyle,
-              color: isActive(pathname, '/login') ? '#111827' : navLinkStyle.color,
-              fontWeight: isActive(pathname, '/login') ? 700 : 500,
-            }}
-          >
-            Login
-          </Link>
+          {authenticated ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                ...navLinkStyle,
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              Logout
+            </button>
+          ) : authenticated === false ? (
+            <>
+              <Link
+                href="/login"
+                style={{
+                  ...navLinkStyle,
+                  color: isActive(pathname, '/login') ? '#111827' : navLinkStyle.color,
+                  fontWeight: isActive(pathname, '/login') ? 700 : 500,
+                }}
+              >
+                Login
+              </Link>
 
-          <Link
-            href="/signup"
-            style={{
-              ...navLinkStyle,
-              color: isActive(pathname, '/signup') ? '#111827' : navLinkStyle.color,
-              fontWeight: isActive(pathname, '/signup') ? 700 : 500,
-            }}
-          >
-            Signup
-          </Link>
+              <Link
+                href="/signup"
+                style={{
+                  ...navLinkStyle,
+                  color: isActive(pathname, '/signup') ? '#111827' : navLinkStyle.color,
+                  fontWeight: isActive(pathname, '/signup') ? 700 : 500,
+                }}
+              >
+                Signup
+              </Link>
+            </>
+          ) : null /* loading: render nothing to avoid flash */}
 
           <button
             type="button"

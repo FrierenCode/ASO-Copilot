@@ -3,6 +3,7 @@ export interface UserAuthProfile {
   email: string | null
   email_normalized: string | null
   user_type: 'anonymous' | 'member'
+  role: 'user' | 'admin'
   email_verified_at: string | null
   created_at: string
   updated_at: string

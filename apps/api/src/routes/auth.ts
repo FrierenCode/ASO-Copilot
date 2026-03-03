@@ -24,7 +24,8 @@ authRouter.post('/auth/request-magic-link', async (c) => {
   }
 
   const email = typeof body.email === 'string' ? body.email.trim() : ''
-  const redirect_to = typeof body.redirect_to === 'string' ? body.redirect_to : '/'
+  const rawRedirect = typeof body.redirect_to === 'string' ? body.redirect_to : '/'
+  const redirect_to = rawRedirect.startsWith('/') ? rawRedirect : '/'
 
   if (!isValidEmail(email)) {
     return c.json({ ok: false, error: 'INVALID_EMAIL' }, 400)
