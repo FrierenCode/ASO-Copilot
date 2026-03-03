@@ -5,12 +5,22 @@ const adminRouter = new Hono<AppEnv>()
 
 adminRouter.get('/api/admin/analytics', async (c) => {
   // --- Auth ---
-  const key = c.req.header('x-admin-key')
-  if (!c.env.ADMIN_SECRET || key !== c.env.ADMIN_SECRET) {
+  const sessionUid = c.get('sessionUid')
+
+  if (!sessionUid) {
     return c.json({ ok: false, error: 'Unauthorized' }, 401)
   }
 
   const db = c.env.DB
+
+  const profile = await db
+    .prepare(`SELECT role FROM user_auth_profiles WHERE uid = ?`)
+    .bind(sessionUid)
+    .first<{ role: string }>()
+
+  if (!profile || profile.role !== 'admin') {
+    return c.json({ ok: false, error: 'Forbidden' }, 403)
+  }
 
   // --- KPI counts ---
   const kpiRows = await db
